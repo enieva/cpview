@@ -1,0 +1,2302 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Check Point VSX CPView - Analytics & Diagnostics Dashboard</title>
+  <meta name="description" content="Check Point VSX CPView Performance Analytics, Event Diagnostics, and Database Visualizer">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=12">
+  <!-- Chart.js: try local asset first, fallback to CDN if needed -->
+  <script src="assets/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- ======================================================================
+       Sidebar Navigation
+       ====================================================================== -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo-badge">
+        <div class="cp-logo-icon">CP</div>
+        <div class="brand-text">
+          <h2>CPView VSX <span class="tag">R81.10</span></h2>
+          <p>SG_FWNET-ch01-01</p>
+        </div>
+      </div>
+      <div class="node-status-bar">
+        <span style="display:flex; align-items:center; gap:8px;">
+          <span class="status-dot"></span>
+          <strong>Nodo Activo</strong>
+        </span>
+        <span style="font-family: var(--font-mono); color: var(--accent-emerald);">4 Cores</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-title">Diagnóstico y Salud</div>
+      <a class="nav-item active" data-page="diagnostics" id="nav-item-diagnostics">
+        <span class="icon">🚨</span>
+        <span>Análisis de Problemas</span>
+        <span class="nav-badge" style="background:rgba(244,63,94,0.25); color:var(--accent-rose);" id="badge-anomalies">8 Alertas</span>
+      </a>
+      <div class="nav-section-title">Monitorización General</div>
+      <a class="nav-item" data-page="overview">
+        <span class="icon">📊</span>
+        <span>Resumen Ejecutivo</span>
+      </a>
+      <a class="nav-item" data-page="system">
+        <span class="icon">🖥️</span>
+        <span>Sistema y CPU</span>
+        <span class="nav-badge" id="badge-cores">4 Cores</span>
+      </a>
+      <a class="nav-item" data-page="interfaces">
+        <span class="icon">🌐</span>
+        <span>Interfaces de Red</span>
+        <span class="nav-badge" id="badge-ifs">50+</span>
+      </a>
+
+      <div class="nav-section-title">Tráfico e Inspección</div>
+      <a class="nav-item" data-page="traffic">
+        <span class="icon">🛡️</span>
+        <span>Tráfico y Conexiones</span>
+        <span class="nav-badge" id="badge-conns">400k</span>
+      </a>
+      <a class="nav-item" data-page="drops">
+        <span class="icon">🚫</span>
+        <span>Descartes y Drops</span>
+        <span class="nav-badge" style="background:rgba(244,63,94,0.25); color:var(--accent-rose);" id="badge-drops">124M</span>
+      </a>
+      <a class="nav-item" data-page="flofiler">
+        <span class="icon">🌊</span>
+        <span>Flow Profiler (CPU)</span>
+      </a>
+      <a class="nav-item" data-page="securexl">
+        <span class="icon">⚡</span>
+        <span>SecureXL & CoreXL</span>
+      </a>
+
+      <div class="nav-section-title">Diagnóstico y Blades</div>
+      <a class="nav-item" data-page="spikes">
+        <span class="icon">🔍</span>
+        <span>Spike Detective</span>
+        <span class="nav-badge" style="background:rgba(245,158,11,0.2); color:var(--accent-amber);" id="badge-spikes">1.9k</span>
+      </a>
+      <a class="nav-item" data-page="blades">
+        <span class="icon">🔐</span>
+        <span>VPN & Blades</span>
+      </a>
+      <a class="nav-item" data-page="db_explorer">
+        <span class="icon">🗄️</span>
+        <span>Explorador SQLite</span>
+        <span class="nav-badge" id="badge-tables">122 Tablas</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <span>Check Point Gaia 64-bit</span>
+      <span style="font-family: var(--font-mono);">Take 28</span>
+    </div>
+  </aside>
+
+  <!-- ======================================================================
+       Main Content Wrapper
+       ====================================================================== -->
+  <div class="main-wrapper">
+    <!-- Top Header Bar -->
+    <header class="top-header">
+      <div class="header-left">
+        <h1 class="page-title" id="current-page-title">
+          <span>🚨</span> Diagnóstico y Análisis de Problemas e Incidentes
+        </h1>
+        <div class="header-meta">
+          <div class="meta-pill" style="border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.1);">
+            <span>Máquina:</span>
+            <strong id="hdr-node-name" style="color:var(--accent-cyan);">SG_FWNET-ch01-01</strong>
+          </div>
+          <div class="meta-pill">
+            <span>Uptime:</span>
+            <strong id="hdr-uptime">119 días, 22h</strong>
+          </div>
+          <div class="meta-pill">
+            <span>Cluster:</span>
+            <strong id="hdr-cluster">VSX Standalone</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <div class="time-range-indicator">
+          <span>📅</span>
+          <span id="hdr-timerange">03 Mar 2024 — 02 Abr 2024 (30 días)</span>
+        </div>
+
+        <!-- High-Contrast Theme Selector -->
+        <div class="theme-selector-container">
+          <button class="btn btn-outline" id="btn-theme-selector" title="Seleccionar tema visual de alto contraste" aria-haspopup="true" aria-expanded="false">
+            <span id="theme-selector-icon">🎨</span>
+            <span id="theme-selector-label">Cyber Dark</span>
+            <span style="font-size: 9px; margin-left: 2px;">▼</span>
+          </button>
+          <div class="theme-dropdown-menu" id="theme-dropdown-menu" style="display: none;">
+            <div class="theme-dropdown-header">Temas de Alto Contraste</div>
+            <div class="theme-option active" data-theme="default">
+              <span class="theme-dot" style="background: linear-gradient(135deg, #0a0e17, #06b6d4);"></span>
+              <div class="theme-option-info">
+                <span class="theme-option-name">Cyber Dark (Original)</span>
+                <span class="theme-option-desc">Oscuro Check Point con cian</span>
+              </div>
+            </div>
+            <div class="theme-option" data-theme="obsidian-gold">
+              <span class="theme-dot" style="background: linear-gradient(135deg, #040405, #fbbf24);"></span>
+              <div class="theme-option-info">
+                <span class="theme-option-name">Obsidian & Gold</span>
+                <span class="theme-option-desc">Negro azabache con oro y ámbar</span>
+              </div>
+            </div>
+            <div class="theme-option" data-theme="matrix-emerald">
+              <span class="theme-dot" style="background: linear-gradient(135deg, #020704, #10b981);"></span>
+              <div class="theme-option-info">
+                <span class="theme-option-name">Matrix Emerald</span>
+                <span class="theme-option-desc">Verde esmeralda neón NOC/SOC</span>
+              </div>
+            </div>
+            <div class="theme-option" data-theme="midnight-sapphire">
+              <span class="theme-dot" style="background: linear-gradient(135deg, #020512, #38bdf8);"></span>
+              <div class="theme-option-info">
+                <span class="theme-option-name">Midnight Sapphire</span>
+                <span class="theme-option-desc">Azul real profundo con hielo</span>
+              </div>
+            </div>
+            <div class="theme-option" data-theme="neon-violet">
+              <span class="theme-dot" style="background: linear-gradient(135deg, #07030e, #c084fc);"></span>
+              <div class="theme-option-info">
+                <span class="theme-option-name">Neon Violet</span>
+                <span class="theme-option-desc">Amatista cósmico con magenta</span>
+              </div>
+            </div>
+            <div class="theme-option" data-theme="monochrome-hc">
+              <span class="theme-dot" style="background: linear-gradient(135deg, #000000, #ffffff);"></span>
+              <div class="theme-option-info">
+                <span class="theme-option-name">Monochrome OLED</span>
+                <span class="theme-option-desc">Negro puro y blanco máximo contraste</span>
+              </div>
+            </div>
+            <div class="theme-option" data-theme="solarized-light">
+              <span class="theme-dot" style="background: linear-gradient(135deg, #f1f5f9, #0284c7);"></span>
+              <div class="theme-option-info">
+                <span class="theme-option-name">Solarized Light</span>
+                <span class="theme-option-desc">Modo claro nítido de alto contraste</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Interface & Font Scale Selector -->
+        <div class="scale-selector-container">
+          <button class="btn btn-outline" id="btn-scale-selector" title="Ajustar escala del interfaz y tipografía" aria-haspopup="true" aria-expanded="false">
+            <span id="scale-selector-icon">🔍</span>
+            <span id="scale-selector-label">100%</span>
+            <span style="font-size: 9px; margin-left: 2px;">▼</span>
+          </button>
+          <div class="scale-dropdown-menu" id="scale-dropdown-menu" style="display: none;">
+            <div class="scale-dropdown-header">
+              <span>Escala y Tipografía</span>
+              <button class="scale-reset-link" id="btn-reset-scaling" title="Restablecer valores por defecto (100%)">↺ Restablecer</button>
+            </div>
+
+            <!-- Sección: Escala General de la Interfaz -->
+            <div class="scale-section">
+              <div class="scale-section-title">
+                <span>🖥️ Escala Interfaz (Zoom)</span>
+                <span class="scale-badge" id="zoom-badge-val">100%</span>
+              </div>
+              <div class="scale-slider-row">
+                <button class="scale-step-btn" id="btn-zoom-dec" title="Reducir zoom">-</button>
+                <input type="range" class="scale-slider" id="scale-zoom-slider" min="70" max="150" step="5" value="100">
+                <button class="scale-step-btn" id="btn-zoom-inc" title="Aumentar zoom">+</button>
+              </div>
+              <div class="scale-preset-grid">
+                <button class="scale-preset-btn" data-zoom="80">80%</button>
+                <button class="scale-preset-btn" data-zoom="90">90%</button>
+                <button class="scale-preset-btn active" data-zoom="100">100%</button>
+                <button class="scale-preset-btn" data-zoom="110">110%</button>
+                <button class="scale-preset-btn" data-zoom="125">125%</button>
+                <button class="scale-preset-btn" data-zoom="140">140%</button>
+              </div>
+            </div>
+
+            <!-- Sección: Tamaño de Letra -->
+            <div class="scale-section">
+              <div class="scale-section-title">
+                <span>🔤 Tamaño de Letra</span>
+                <span class="scale-badge" id="font-badge-val">100%</span>
+              </div>
+              <div class="scale-slider-row">
+                <button class="scale-step-btn" id="btn-font-dec" title="Reducir tamaño de letra">A-</button>
+                <input type="range" class="scale-slider" id="scale-font-slider" min="80" max="140" step="5" value="100">
+                <button class="scale-step-btn" id="btn-font-inc" title="Aumentar tamaño de letra">A+</button>
+              </div>
+              <div class="scale-preset-grid font-grid">
+                <button class="font-preset-btn" data-font="85">85%</button>
+                <button class="font-preset-btn active" data-font="100">100%</button>
+                <button class="font-preset-btn" data-font="115">115%</button>
+                <button class="font-preset-btn" data-font="130">130%</button>
+              </div>
+            </div>
+
+            <!-- Sección: Tipo de Letra -->
+            <div class="scale-section">
+              <div class="scale-section-title">
+                <span>🖋️ Tipo de Letra</span>
+              </div>
+              <div class="font-family-selector">
+                <div class="font-family-option active" data-font-family="inter">
+                  <div class="font-family-preview" style="font-family:'Inter', sans-serif;">Aa</div>
+                  <div class="font-family-meta">
+                    <span class="font-family-name">Inter</span>
+                    <span class="font-family-desc">Predeterminada Check Point</span>
+                  </div>
+                </div>
+                <div class="font-family-option" data-font-family="roboto">
+                  <div class="font-family-preview" style="font-family:'Roboto', sans-serif;">Aa</div>
+                  <div class="font-family-meta">
+                    <span class="font-family-name">Roboto</span>
+                    <span class="font-family-desc">Limpia y moderna</span>
+                  </div>
+                </div>
+                <div class="font-family-option" data-font-family="system">
+                  <div class="font-family-preview" style="font-family:system-ui, sans-serif;">Aa</div>
+                  <div class="font-family-meta">
+                    <span class="font-family-name">Sistema Nativo</span>
+                    <span class="font-family-desc">Segoe UI / SF Pro / Ubuntu</span>
+                  </div>
+                </div>
+                <div class="font-family-option" data-font-family="mono">
+                  <div class="font-family-preview" style="font-family:'JetBrains Mono', monospace;">01</div>
+                  <div class="font-family-meta">
+                    <span class="font-family-name">JetBrains Mono</span>
+                    <span class="font-family-desc">Modo terminal técnico SOC</span>
+                  </div>
+                </div>
+                <div class="font-family-option" data-font-family="dyslexic">
+                  <div class="font-family-preview" style="font-family:'Atkinson Hyperlegible', sans-serif;">Aa</div>
+                  <div class="font-family-meta">
+                    <span class="font-family-name">Alta Legibilidad</span>
+                    <span class="font-family-desc">Atkinson Hyperlegible / Accesible</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="scale-footer-tip">
+              <span>⌨️ Atajos: <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd> Zoom · <kbd>Ctrl</kbd>+<kbd>0</kbd> 100%</span>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-outline" id="btn-top-chart-builder" title="Abrir creador de gráficos personalizados para cualquier tabla">
+          <span>📊</span> Creador de Gráficos
+        </button>
+        <button class="btn btn-primary" id="btn-open-load-db">
+          <span>📂</span> Cargar Otra Máquina / BD
+        </button>
+        <button class="btn" id="btn-export-json">
+          <span>⬇️</span> Exportar JSON
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="content-area">
+
+      <!-- ====================================================================
+           PAGE 1: OVERVIEW (Resumen Ejecutivo)
+           ==================================================================== -->
+            <!-- ====================================================================
+           PAGE 0: DIAGNOSTICS & CONFLUENCE (Análisis de Problemas e Incidentes)
+           ==================================================================== -->
+      <section id="page-diagnostics" class="page-view active">
+
+        <!-- Executive Hero & Health Assessment Banner -->
+        <div class="diagnostics-hero">
+          <div class="diagnostics-hero-main">
+            <div class="health-score-dial" title="Score de Salud Operacional del Gateway">
+              <div class="health-score-dial-inner">
+                <span class="health-score-num">72</span>
+                <span class="health-score-label">Salud / 100</span>
+              </div>
+            </div>
+            <div class="diagnostics-hero-text">
+              <h2><span>🚨</span> Diagnóstico Forense de Problemas y Confluencia Temporal</h2>
+              <p>
+                Auditoría automatizada de los datos de rendimiento de CPView (1.34 GB, 722 horas y 126.8M descartes).
+                Se detecta <strong>confluencia crítica de indicadores</strong>: saturación periódica del CoreXL Worker #1, 
+                ráfagas de 396k conexiones/s y más de 5.8 billones de descartes por desbordamiento de cola en SecureXL.
+              </p>
+            </div>
+          </div>
+          <div class="diagnostics-hero-stats">
+            <div class="diag-stat-pill crit">
+              <span class="diag-stat-pill-num">3 Críticos</span>
+              <span class="diag-stat-pill-label">Severidad Alta</span>
+            </div>
+            <div class="diag-stat-pill high">
+              <span class="diag-stat-pill-num">4 Altos</span>
+              <span class="diag-stat-pill-label">Riesgo Operativo</span>
+            </div>
+            <div class="diag-stat-pill info">
+              <span class="diag-stat-pill-num" id="hero-confluence-count">350</span>
+              <span class="diag-stat-pill-label">Franjas Confluentes</span>
+            </div>
+            <div class="diag-stat-pill">
+              <span class="diag-stat-pill-num" style="color:var(--accent-amber);">2 Cíclicos</span>
+              <span class="diag-stat-pill-label">Patrones Diarios</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 1. Systematic Problem Audit Cards -->
+        <div class="card-panel" style="margin-bottom: 24px;">
+          <div class="card-header">
+            <div>
+              <h3 class="card-header-title"><span>🔍</span> Auditoría Sistemática de Problemas Detectados en las Tablas</h3>
+              <p class="card-header-subtitle">Análisis multivariable de cuellos de botella en CPU, colas SecureXL, enlaces de red y descartes</p>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <span class="pill-badge" style="background:rgba(244,63,94,0.18); color:var(--accent-rose); border:1px solid rgba(244,63,94,0.3);">3 Críticos</span>
+              <span class="pill-badge" style="background:rgba(245,158,11,0.18); color:var(--accent-amber); border:1px solid rgba(245,158,11,0.3);">4 Altos</span>
+              <span class="pill-badge" style="background:rgba(6,182,212,0.18); color:var(--accent-cyan); border:1px solid rgba(6,182,212,0.3);">1 Informativo</span>
+            </div>
+          </div>
+
+          <div style="padding: 20px 24px;">
+            <div class="problems-audit-grid">
+
+              <!-- Problem 1: CoreXL Imbalance -->
+              <div class="problem-audit-card severity-crit">
+                <div class="problem-card-top">
+                  <div class="problem-card-title">Saturación y Desequilibrio en CoreXL FW Worker #1 (fwk0_1)</div>
+                  <span class="problem-card-badge crit">Crítico</span>
+                </div>
+                <div class="problem-card-evidence">
+                  <strong>Evidencia en tablas:</strong> Core 1 acumula <strong>898 picos de CPU</strong> en Spike Detective (45.4% del total), con picos sostenidos del <strong>100%</strong> y duraciones de hasta <strong>7,711s (2.1 horas)</strong>. Los cores SND (0 y 2) promedian solo 11% de CPU.
+                </div>
+                <div class="problem-card-confluence">
+                  <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
+                  <div class="confluence-chips-row">
+                    <span class="confluence-chip cpu">🔴 CPU Core 1: 100%</span>
+                    <span class="confluence-chip conns">🟣 Conn Rate: 396k/s</span>
+                    <span class="confluence-chip traffic">🔵 Tráfico F2F</span>
+                  </div>
+                </div>
+                <div class="problem-card-remediation">
+                  <strong>Causa Raíz & Solución:</strong> Desbalanceo de afinidad en CoreXL Dispatcher. Las conexiones pesadas no se reparten uniformemente.
+                  <br>
+                  <code>fw ctl multik dynamic_disp on</code> · <code>sim affinity -a</code>
+                </div>
+              </div>
+
+              <!-- Problem 2: SecureXL Enqueue Fails -->
+              <div class="problem-audit-card severity-crit">
+                <div class="problem-card-top">
+                  <div class="problem-card-title">Colapso de Despachador SecureXL: 5.83B Enqueue Fails F2P</div>
+                  <span class="problem-card-badge crit">Crítico</span>
+                </div>
+                <div class="problem-card-evidence">
+                  <strong>Evidencia en tablas:</strong> <code>fwmultik_dispatcher_vs_stats_enqueue_fail...</code> registra <strong>5,835,841,087 fallos F2P</strong> hacia espacio de usuario y <strong>43.7M fallos Inbound</strong>. Hay 123M paquetes no acelerados por <code>Inspect handler</code>.
+                </div>
+                <div class="problem-card-confluence">
+                  <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
+                  <div class="confluence-chips-row">
+                    <span class="confluence-chip queue">🔴 F2P Drops: 5.83B</span>
+                    <span class="confluence-chip cpu">🔴 Worker Starvation</span>
+                    <span class="confluence-chip traffic">🔵 Slow Path Burst</span>
+                  </div>
+                </div>
+                <div class="problem-card-remediation">
+                  <strong>Causa Raíz & Solución:</strong> Desborde en colas de despachador hacia userspace. Aumentar el tamaño del buffer y optimizar plantillas SecureXL.
+                  <br>
+                  <code>fw ctl set int sim_dispatcher_queue_size 4096</code>
+                </div>
+              </div>
+
+              <!-- Problem 3: Connection Setup Spikes -->
+              <div class="problem-audit-card severity-crit">
+                <div class="problem-card-top">
+                  <div class="problem-card-title">Ráfagas Masivas de Nuevas Conexiones (Hasta 396k conns/s)</div>
+                  <span class="problem-card-badge crit">Crítico</span>
+                </div>
+                <div class="problem-card-evidence">
+                  <strong>Evidencia en tablas:</strong> La tasa de establecimiento se dispara de ~10k a <strong>396,498 conns/s</strong> (aumento del 3,800%), coincidiendo con picos de conexiones en estado <code>tcp_handshake</code> y saturación de cores de firewall.
+                </div>
+                <div class="problem-card-confluence">
+                  <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
+                  <div class="confluence-chips-row">
+                    <span class="confluence-chip conns">🟣 Conn Rate: 396k/s</span>
+                    <span class="confluence-chip cpu">🔴 Cores 1 & 3: 98%</span>
+                    <span class="confluence-chip drops">🟡 Rulebase Drops</span>
+                  </div>
+                </div>
+                <div class="problem-card-remediation">
+                  <strong>Causa Raíz & Solución:</strong> Apertura masiva de sesiones por escaneos o ráfagas SYN. Activar Accelerated SYN Defender en SecureXL.
+                  <br>
+                  <code>fw ctl set int sim_syn_defense 1</code>
+                </div>
+              </div>
+
+              <!-- Problem 4: Drops Rulebase & Anti-Spoofing -->
+              <div class="problem-audit-card severity-high">
+                <div class="problem-card-top">
+                  <div class="problem-card-title">Volumen Masivo de Descartes: 124.4M Rulebase y 21M Anti-Spoofing</div>
+                  <span class="problem-card-badge high">Alto</span>
+                </div>
+                <div class="problem-card-evidence">
+                  <strong>Evidencia en tablas:</strong> 126.8M descartes totales. El 98.1% son por <code>Rulebase</code> y 21M por <code>Anti-Spoofing PPAK</code>. El <strong>13 de marzo a las 12:00 UTC</strong> se produjo un pico de <strong>535,248 drops/h</strong>.
+                </div>
+                <div class="problem-card-confluence">
+                  <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
+                  <div class="confluence-chips-row">
+                    <span class="confluence-chip drops">🟠 Drops: 535k/h</span>
+                    <span class="confluence-chip traffic">🔵 Throughput: 506 Gbps</span>
+                    <span class="confluence-chip cpu">🔴 CPU Core 1: 94%</span>
+                  </div>
+                </div>
+                <div class="problem-card-remediation">
+                  <strong>Causa Raíz & Solución:</strong> Habilitar Drop Templates para descartar en hardware/SND antes de cargar CoreXL. Auditar topología Anti-Spoofing.
+                  <br>
+                  <code>fw accel drop_templates on</code>
+                </div>
+              </div>
+
+              <!-- Problem 5: 10G Link Wire-Rate Saturation -->
+              <div class="problem-audit-card severity-high">
+                <div class="problem-card-top">
+                  <div class="problem-card-title">Saturación Cercana a Tasa de Línea en Enlace 10G eth2-13 (9.14 Gbps)</div>
+                  <span class="problem-card-badge high">Alto</span>
+                </div>
+                <div class="problem-card-evidence">
+                  <strong>Evidencia en tablas:</strong> Interfaz física <code>eth2-13</code> alcanza un pico de <strong>9,138.76 Mbps (91.4% de un enlace 10G)</strong>. En agregación, <code>bond1</code> supera los <strong>9.39 Gbps</strong>, provocando riesgo inminente de micro-drops.
+                </div>
+                <div class="problem-card-confluence">
+                  <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
+                  <div class="confluence-chips-row">
+                    <span class="confluence-chip traffic">🔵 Throughput: 9.14 Gbps</span>
+                    <span class="confluence-chip cpu">🔴 Buffer Queuing</span>
+                  </div>
+                </div>
+                <div class="problem-card-remediation">
+                  <strong>Causa Raíz & Solución:</strong> Desbalanceo LACP. Cambiar algoritmo de hash del bond para repartir tráfico entre enlaces miembros.
+                  <br>
+                  <code>set bonding group bond1 mode layer3+4</code>
+                </div>
+              </div>
+
+              <!-- Problem 6: Midnight Recurrent Degradation -->
+              <div class="problem-audit-card severity-med">
+                <div class="problem-card-top">
+                  <div class="problem-card-title">Patrón Cíclico a Medianoche (00:00 UTC - 83.3% de los Días)</div>
+                  <span class="problem-card-badge med">Recurrente</span>
+                </div>
+                <div class="problem-card-evidence">
+                  <strong>Evidencia en tablas:</strong> En <strong>25 de los 30 días (83.3%)</strong> a las 00:00 UTC, Core 1 supera el 75% de CPU con ráfagas de <code>sqlite3</code>, <code>fwk0_TRACK_WRTR</code> y rotación de logs.
+                </div>
+                <div class="problem-card-confluence">
+                  <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
+                  <div class="confluence-chips-row">
+                    <span class="confluence-chip recurrent">🟢 25/30 Días a las 00h</span>
+                    <span class="confluence-chip cpu">🔴 CPU Spike Core 1</span>
+                  </div>
+                </div>
+                <div class="problem-card-remediation">
+                  <strong>Causa Raíz & Solución:</strong> Tareas programadas en crontab y rotación de logs colisionando a las 00:00. Escalonar cron jobs en .
+                  <br>
+                  <code>crontab -l</code> · <code>nice -n 15</code>
+                </div>
+              </div>
+
+              <!-- Problem 7: Business Hours Surge -->
+              <div class="problem-audit-card severity-med">
+                <div class="problem-card-top">
+                  <div class="problem-card-title">Patrón Laboral de Mediodía (11:00 - 13:00 UTC - 53% de los Días)</div>
+                  <span class="problem-card-badge med">Recurrente</span>
+                </div>
+                <div class="problem-card-evidence">
+                  <strong>Evidencia en tablas:</strong> Entre semana de lunes a viernes, el 53% de los días presentan saturación coincidente de conexiones y CPU en esta franja. Fines de semana cae al 4.2%.
+                </div>
+                <div class="problem-card-confluence">
+                  <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
+                  <div class="confluence-chips-row">
+                    <span class="confluence-chip recurrent">🟢 L-V 11h - 13h</span>
+                    <span class="confluence-chip conns">🟣 Pico Usuarios</span>
+                  </div>
+                </div>
+                <div class="problem-card-remediation">
+                  <strong>Causa Raíz & Solución:</strong> Pico horario laboral de tráfico corporativo. Optimizar inspección SSL para tráfico no crítico.
+                  <br>
+                  <code>fw ctl multik stat</code>
+                </div>
+              </div>
+
+              <!-- Problem 8: Flofiler Inefficient Acceleration -->
+              <div class="problem-audit-card severity-high">
+                <div class="problem-card-top">
+                  <div class="problem-card-title">Ineficiencia en Aceleración: 223M Paquetes F2F y 51.5% CPU en Chain Modules</div>
+                  <span class="problem-card-badge high">Alto</span>
+                </div>
+                <div class="problem-card-evidence">
+                  <strong>Evidencia en tablas:</strong> Flofiler revela que el <strong>51.51% de ciclos de CPU</strong> se disipan en <code>Chain modules</code> y 13.0% en <code>Inbound F2F</code>. SecureXL desvía <strong>123.1M paquetes por Inspect handler</strong> y 99.8M por protocolo IP no acelerado. Tráfico de inspección dominado por DNS (UDP:53 con 21.3%) y SMB (TCP:445 con 12.6%).
+                </div>
+                <div class="problem-card-confluence">
+                  <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
+                  <div class="confluence-chips-row">
+                    <span class="confluence-chip cpu">🔴 Chain Modules: 51.5%</span>
+                    <span class="confluence-chip traffic">🔵 DNS / SMB L7</span>
+                    <span class="confluence-chip queue">🟡 F2F Slow Path</span>
+                  </div>
+                </div>
+                <div class="problem-card-remediation">
+                  <strong>Causa Raíz & Solución:</strong> Paquetes procesados en camino lento (PPAK bypass) por inspecciones de capa 7 complejas. Optimizar SecureXL Drop Templates y plantillas de aceleración.
+                  <br>
+                  <code>fwaccel stat</code> · <code>fw ctl conns</code>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Multivariable Temporal Confluence Chart -->
+        <div class="card-panel" style="margin-bottom: 24px;">
+          <div class="card-header">
+            <div>
+              <h3 class="card-header-title"><span>📈</span> Correlación Temporal Multivariable de Indicadores (30 Días)</h3>
+              <p class="card-header-subtitle">Superposición simultánea de CPU Core 1, Throughput, Tasa de Conexiones y Drops. Permite identificar confluencias críticas en la línea temporal.</p>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="filter-btn active" id="btn-diag-range-all" data-range="all">Todo el Mes (30D)</button>
+              <button class="filter-btn" id="btn-diag-range-14d" data-range="14">14 Días</button>
+              <button class="filter-btn" id="btn-diag-range-7d" data-range="7">7 Días</button>
+              <button class="filter-btn" id="btn-diag-range-crit" data-range="crit">Ventana Crítica (11-15 Mar)</button>
+            </div>
+          </div>
+          <div style="padding: 20px 24px;">
+            <div style="height: 340px; position: relative;">
+              <canvas id="chart-diagnostics-confluence"></canvas>
+            </div>
+            <div style="margin-top: 14px; display: flex; justify-content: space-between; align-items: center; font-size: calc(11.5px * var(--font-scale, 1)); color: var(--text-dim);">
+              <span>💡 Pasa el cursor por las curvas para inspeccionar la confluencia exacta de métricas en cualquier hora.</span>
+              <span style="font-family: var(--font-mono); color: var(--accent-cyan);">722 muestras horarias correlacionadas</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Heatmap of Recurrence (24h x 7 Days) -->
+        <div class="card-panel" style="margin-bottom: 24px;">
+          <div class="card-header">
+            <div>
+              <h3 class="card-header-title"><span>🗓️</span> Mapa de Calor de Recurrencia: Franjas Críticas por Hora y Día</h3>
+              <p class="card-header-subtitle">Distribución temporal de horas con alta carga (Core 1 ≥ 75%). Revela de forma instantánea el patrón diario a medianoche y el ciclo laboral.</p>
+            </div>
+          </div>
+          <div style="padding: 20px 24px;">
+            <div class="heatmap-container">
+              <table class="heatmap-table" id="diag-heatmap-table">
+                <!-- Injected via JavaScript -->
+              </table>
+            </div>
+            <div class="heatmap-legend">
+              <span>Nivel de Carga:</span>
+              <div class="heatmap-legend-items">
+                <span class="heatmap-legend-box" style="background: rgba(255,255,255,0.05);" title="0% - Normal"></span>
+                <span>Normal</span>
+                <span class="heatmap-legend-box" style="background: rgba(6,182,212,0.3);" title="1% - 20% Moderado"></span>
+                <span class="heatmap-legend-box" style="background: rgba(245,158,11,0.5);" title="20% - 50% Alto"></span>
+                <span class="heatmap-legend-box" style="background: rgba(244,63,94,0.7);" title="50% - 75% Crítico"></span>
+                <span class="heatmap-legend-box" style="background: #f43f5e;" title=">75% Extremo"></span>
+                <span style="font-weight:600; color:var(--accent-rose);">Saturación Recurrente</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Interactive Incident Explorer Table -->
+        <div class="card-panel" style="margin-bottom: 24px;">
+          <div class="card-header">
+            <div>
+              <h3 class="card-header-title"><span>📋</span> Registro Detallado de Incidentes con Confluencia Multivariable</h3>
+              <p class="card-header-subtitle">Franjas temporales donde coincidieron 2 o más indicadores anómalos. Haz clic en cualquier fila para ver el desglose forense y remediación.</p>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span class="pill-badge" id="diag-incidents-count" style="font-family:var(--font-mono);">Cargando incidentes...</span>
+            </div>
+          </div>
+
+          <!-- Controls strip -->
+          <div style="padding: 14px 24px; border-bottom: 1px solid var(--border-subtle); display:flex; gap:12px; align-items:center; flex-wrap:wrap; background: rgba(0,0,0,0.15);">
+            <div style="flex:1; min-width: 240px; position:relative;">
+              <input type="text" class="search-input" id="diag-incidents-search" placeholder="🔍 Buscar por fecha (ej. 2024-03-13), métrica o causa..." style="width:100%; padding-left:12px;">
+            </div>
+            <select class="select-input" id="diag-severity-filter" style="width:auto;">
+              <option value="all">Todas las Severidades</option>
+              <option value="CRÍTICO">Solo Críticos (🔴)</option>
+              <option value="ALTO">Altos y Críticos (🟠/🔴)</option>
+              <option value="MEDIO">Medios (🟡)</option>
+            </select>
+            <select class="select-input" id="diag-nature-filter" style="width:auto;">
+              <option value="all">Toda Naturaleza</option>
+              <option value="Recurrente">Solo Recurrentes (Patrón)</option>
+              <option value="Puntual">Solo Puntuales (Anomalías)</option>
+            </select>
+          </div>
+
+          <div style="padding: 0 24px;">
+            <div style="overflow-x: auto;">
+              <table class="data-table" id="table-diag-incidents">
+                <thead>
+                  <tr>
+                    <th style="width: 170px;">Fecha y Hora (UTC)</th>
+                    <th style="width: 100px;">Severidad</th>
+                    <th style="width: 110px;">Naturaleza</th>
+                    <th>Confluencia de Indicadores</th>
+                    <th style="width: 160px; text-align: right;">Acción</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-diag-incidents">
+                  <!-- Injected via JavaScript -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination Bar -->
+            <div style="padding: 14px 0; display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border-subtle); font-size:calc(12px * var(--font-scale,1)); color:var(--text-muted);">
+              <span id="diag-pagination-info">Mostrando 1 - 15 de 350</span>
+              <div style="display:flex; gap:8px;">
+                <button class="btn btn-sm btn-outline" id="btn-diag-prev">◀ Anterior</button>
+                <button class="btn btn-sm btn-outline" id="btn-diag-next">Siguiente ▶</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. Executive Remediation Playbook -->
+        <div class="card-panel">
+          <div class="card-header">
+            <div>
+              <h3 class="card-header-title"><span>🛡️</span> Playbook Ejecutivo de Remediación y Buenas Prácticas Check Point</h3>
+              <p class="card-header-subtitle">Comandos de consola Gaia y acciones en SmartConsole para mitigar los problemas identificados</p>
+            </div>
+          </div>
+          <div style="padding: 20px 24px;">
+            <div class="playbook-grid">
+
+              <div class="playbook-card">
+                <div class="playbook-card-header">
+                  <div class="playbook-step-badge">1</div>
+                  <span>Activar CoreXL Dynamic Dispatcher</span>
+                </div>
+                <p style="font-size:calc(12px * var(--font-scale,1)); color:var(--text-muted); line-height:1.4;">
+                  Elimina el cuello de botella en Core 1 redistribuyendo los flujos de tráfico pesados dinámicamente entre todos los workers disponibles.
+                </p>
+                <div class="playbook-cmd">
+                  <span class="playbook-cmd-text">fw ctl multik dynamic_disp on</span>
+                  <button class="btn-copy-cmd" onclick="navigator.clipboard.writeText('fw ctl multik dynamic_disp on'); this.textContent='✓ Copiado'; setTimeout(()=>this.textContent='Copiar', 1500);">Copiar</button>
+                </div>
+              </div>
+
+              <div class="playbook-card">
+                <div class="playbook-card-header">
+                  <div class="playbook-step-badge">2</div>
+                  <span>Rebalancear Afinidad Automática CoreXL</span>
+                </div>
+                <p style="font-size:calc(12px * var(--font-scale,1)); color:var(--text-muted); line-height:1.4;">
+                  Optimiza la afinidad de interrupciones de interfaces de red con los cores SND (0, 2) y libera a los workers para inspección.
+                </p>
+                <div class="playbook-cmd">
+                  <span class="playbook-cmd-text">sim affinity -a</span>
+                  <button class="btn-copy-cmd" onclick="navigator.clipboard.writeText('sim affinity -a'); this.textContent='✓ Copiado'; setTimeout(()=>this.textContent='Copiar', 1500);">Copiar</button>
+                </div>
+              </div>
+
+              <div class="playbook-card">
+                <div class="playbook-card-header">
+                  <div class="playbook-step-badge">3</div>
+                  <span>Ampliar Cola de Despachador SecureXL</span>
+                </div>
+                <p style="font-size:calc(12px * var(--font-scale,1)); color:var(--text-muted); line-height:1.4;">
+                  Previene los 5.83B fallos de encolamiento F2P aumentando el buffer de comunicación entre el kernel y userspace.
+                </p>
+                <div class="playbook-cmd">
+                  <span class="playbook-cmd-text">fw ctl set int sim_dispatcher_queue_size 4096</span>
+                  <button class="btn-copy-cmd" onclick="navigator.clipboard.writeText('fw ctl set int sim_dispatcher_queue_size 4096'); this.textContent='✓ Copiado'; setTimeout(()=>this.textContent='Copiar', 1500);">Copiar</button>
+                </div>
+              </div>
+
+              <div class="playbook-card">
+                <div class="playbook-card-header">
+                  <div class="playbook-step-badge">4</div>
+                  <span>Habilitar Accelerated SYN Defense</span>
+                </div>
+                <p style="font-size:calc(12px * var(--font-scale,1)); color:var(--text-muted); line-height:1.4;">
+                  Protege los workers de CoreXL contra las ráfagas de 396k conns/s absorbiendo los handshakes TCP directamente en SecureXL.
+                </p>
+                <div class="playbook-cmd">
+                  <span class="playbook-cmd-text">fw ctl set int sim_syn_defense 1</span>
+                  <button class="btn-copy-cmd" onclick="navigator.clipboard.writeText('fw ctl set int sim_syn_defense 1'); this.textContent='✓ Copiado'; setTimeout(()=>this.textContent='Copiar', 1500);">Copiar</button>
+                </div>
+              </div>
+
+              <div class="playbook-card">
+                <div class="playbook-card-header">
+                  <div class="playbook-step-badge">5</div>
+                  <span>Activar Drop Templates en SecureXL</span>
+                </div>
+                <p style="font-size:calc(12px * var(--font-scale,1)); color:var(--text-muted); line-height:1.4;">
+                  Descarta en hardware los 124.4M paquetes denegados por Rulebase sin consumir ciclos de CPU en el firewall.
+                </p>
+                <div class="playbook-cmd">
+                  <span class="playbook-cmd-text">fw accel drop_templates on</span>
+                  <button class="btn-copy-cmd" onclick="navigator.clipboard.writeText('fw accel drop_templates on'); this.textContent='✓ Copiado'; setTimeout(()=>this.textContent='Copiar', 1500);">Copiar</button>
+                </div>
+              </div>
+
+              <div class="playbook-card">
+                <div class="playbook-card-header">
+                  <div class="playbook-step-badge">6</div>
+                  <span>Optimizar Balanceo LACP bond1 a Layer 3+4</span>
+                </div>
+                <p style="font-size:calc(12px * var(--font-scale,1)); color:var(--text-muted); line-height:1.4;">
+                  Reparte el tráfico entre eth1-13 y eth2-13 mediante puertos L4 para evitar saturar el enlace de 10G al 91.4%.
+                </p>
+                <div class="playbook-cmd">
+                  <span class="playbook-cmd-text">set bonding group bond1 mode layer3+4</span>
+                  <button class="btn-copy-cmd" onclick="navigator.clipboard.writeText('set bonding group bond1 mode layer3+4'); this.textContent='✓ Copiado'; setTimeout(()=>this.textContent='Copiar', 1500);">Copiar</button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+<section id="page-overview" class="page-view">
+        <!-- KPI Cards -->
+        <div class="kpi-grid">
+          <div class="kpi-card cyan">
+            <div class="kpi-header">
+              <span class="kpi-title">Rendimiento Inbound Promedio</span>
+              <div class="kpi-icon">⚡</div>
+            </div>
+            <div class="kpi-value" id="kpi-avg-thru">16.33 Gbps</div>
+            <div class="kpi-subtext">
+              <span class="badge-trend info">Host Rx</span> Pico máximo: <strong id="kpi-max-thru">1,274 Gbps</strong>
+            </div>
+          </div>
+
+          <div class="kpi-card blue">
+            <div class="kpi-header">
+              <span class="kpi-title">Conexiones Concurrentes</span>
+              <div class="kpi-icon">🛡️</div>
+            </div>
+            <div class="kpi-value" id="kpi-conns">400,639</div>
+            <div class="kpi-subtext">
+              <span class="badge-trend positive">Estables</span> Pico mensual: <strong id="kpi-max-conns">493,865</strong>
+            </div>
+          </div>
+
+          <div class="kpi-card rose">
+            <div class="kpi-header">
+              <span class="kpi-title">Total Paquetes Descartados</span>
+              <div class="kpi-icon">🚫</div>
+            </div>
+            <div class="kpi-value" id="kpi-drops">126.6 M</div>
+            <div class="kpi-subtext">
+              <span class="badge-trend danger">98.2% Rulebase</span> 2.0M caídas PSL
+            </div>
+          </div>
+
+          <div class="kpi-card amber">
+            <div class="kpi-header">
+              <span class="kpi-title">Eventos Spike Detective</span>
+              <div class="kpi-icon">🔍</div>
+            </div>
+            <div class="kpi-value" id="kpi-spikes">1,979</div>
+            <div class="kpi-subtext">
+              <span class="badge-trend warning">CPU Spikes</span> 1,092 picos de threads
+            </div>
+          </div>
+        </div>
+
+        <!-- Charts Grid Row 1: Traffic & CPU Over Time -->
+        <div class="charts-grid">
+          <div class="col-8">
+            <div class="card-panel">
+              <div class="card-header">
+                <div>
+                  <h3 class="card-header-title"><span>📈</span> Evolución de Rendimiento y Tráfico (30 Días)</h3>
+                  <p class="card-header-subtitle">Throughput de red (Mbps) y paquetes por segundo agregados por hora</p>
+                </div>
+                <div class="card-actions">
+                  <div class="filter-btn-group" id="overview-traffic-range">
+                    <button class="filter-btn" data-days="7">7D</button>
+                    <button class="filter-btn" data-days="14">14D</button>
+                    <button class="filter-btn active" data-days="30">30D</button>
+                  </div>
+                  <div class="chart-controls" data-chart="chart-overview-traffic">
+                    <div class="filter-btn-group chart-type-group">
+                      <button class="filter-btn active" data-type="line">📈 Línea</button>
+                      <button class="filter-btn" data-type="bar">📊 Barras</button>
+                      <button class="filter-btn" data-type="horizontalBar">📋 Horiz</button>
+                    </div>
+                    <div class="color-picker-group">
+                      <span class="color-dot active" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
+                      <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></span>
+                      <span class="color-dot" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa/Rojo"></span>
+                      <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
+                      <span class="color-dot" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="chart-container tall">
+                  <canvas id="chart-overview-traffic"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-4">
+            <div class="card-panel">
+              <div class="card-header">
+                <div>
+                  <h3 class="card-header-title"><span>🚫</span> Top Razones de Descarte</h3>
+                  <p class="card-header-subtitle">Distribución porcentual de drop reasons</p>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="chart-container tall">
+                  <canvas id="chart-overview-drops-pie"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Charts Grid Row 2: CPU & Memory Trends + Storage -->
+        <div class="charts-grid">
+          <div class="col-8">
+            <div class="card-panel">
+              <div class="card-header">
+                <div>
+                  <h3 class="card-header-title"><span>🖥️</span> Utilización de CPU Global y Memoria RAM</h3>
+                  <p class="card-header-subtitle">Porcentaje de carga media del sistema y consumo de memoria (16 GB)</p>
+                </div>
+                <div class="chart-controls" data-chart="chart-overview-cpu-mem">
+                  <div class="filter-btn-group chart-type-group">
+                    <button class="filter-btn active" data-type="line">📈 Línea</button>
+                    <button class="filter-btn" data-type="bar">📊 Barras</button>
+                    <button class="filter-btn" data-type="horizontalBar">📋 Horiz</button>
+                  </div>
+                  <div class="color-picker-group">
+                    <span class="color-dot active" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
+                    <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></span>
+                    <span class="color-dot" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa/Rojo"></span>
+                    <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
+                    <span class="color-dot" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="chart-overview-cpu-mem"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-4">
+            <div class="card-panel">
+              <div class="card-header">
+                <div>
+                  <h3 class="card-header-title"><span>💾</span> Estado del Almacenamiento</h3>
+                  <p class="card-header-subtitle">Particiones de disco y porcentaje en uso</p>
+                </div>
+              </div>
+              <div class="card-body" id="overview-disks-container" style="display:flex; flex-direction:column; gap:18px;">
+                <!-- Filled dynamically -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           PAGE 2: SYSTEM & CPU (Sistema y CPU Cores)
+           ==================================================================== -->
+      <section id="page-system" class="page-view">
+        <div class="kpi-grid">
+          <div class="kpi-card cyan">
+            <div class="kpi-header">
+              <span class="kpi-title">Cores Asignados</span>
+              <div class="kpi-icon">⚙️</div>
+            </div>
+            <div class="kpi-value">4 Cores</div>
+            <div class="kpi-subtext">2 CoreXL FW Workers + 2 SND Cores</div>
+          </div>
+          <div class="kpi-card emerald">
+            <div class="kpi-header">
+              <span class="kpi-title">Memoria RAM Total</span>
+              <div class="kpi-icon">🧠</div>
+            </div>
+            <div class="kpi-value">15.37 GB</div>
+            <div class="kpi-subtext">Uso medio: <strong id="mem-avg-pct">33.1%</strong> (~5.08 GB)</div>
+          </div>
+          <div class="kpi-card purple">
+            <div class="kpi-header">
+              <span class="kpi-title">Versión Gaia SO</span>
+              <div class="kpi-icon">🐧</div>
+            </div>
+            <div class="kpi-value" style="font-size: 20px;">Gaia 64Bit R81.10</div>
+            <div class="kpi-subtext">Jumbo Hotfix Main Take 28</div>
+          </div>
+          <div class="kpi-card blue">
+            <div class="kpi-header">
+              <span class="kpi-title">Total Muestras DB</span>
+              <div class="kpi-icon">⏱️</div>
+            </div>
+            <div class="kpi-value" id="kpi-snapshots-count">42,862</div>
+            <div class="kpi-subtext">1 muestra por minuto durante 30 días</div>
+          </div>
+        </div>
+
+        <!-- Cores breakdown table -->
+        <div class="card-panel" style="margin-bottom: 24px;">
+          <div class="card-header">
+            <h3 class="card-header-title"><span>🧩</span> Desglose de Arquitectura de Cores (CoreXL / SND)</h3>
+            <div class="card-actions">
+              <button class="btn btn-sm btn-outline btn-open-chart-gen" data-source="cpu-cores" title="Crear gráfico personalizado a partir de la tabla de cores">
+                <span>📊</span> Graficar Cores
+              </button>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table" id="table-cpu-cores">
+              <thead>
+                <tr>
+                  <th>Core ID</th>
+                  <th>Rol Asignado</th>
+                  <th>Uso Medio</th>
+                  <th>Uso Máximo</th>
+                  <th>Tiempo Usuario (% Usr)</th>
+                  <th>Tiempo Sistema (% Sys)</th>
+                  <th>Tiempo Idle (% Idle)</th>
+                  <th>Max Interrupciones</th>
+                  <th>Estado Carga</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Generated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- CPU per Core Time Series Chart -->
+        <div class="charts-grid">
+          <div class="col-12">
+            <div class="card-panel">
+              <div class="card-header">
+                <div>
+                  <h3 class="card-header-title"><span>📊</span> Utilización Individual por Core en el Tiempo</h3>
+                  <p class="card-header-subtitle">Comparativa de carga entre Cores SND (0, 2) y CoreXL Workers (1, 3)</p>
+                </div>
+                <div class="chart-controls" data-chart="chart-cpu-cores-timeline">
+                  <div class="filter-btn-group chart-type-group">
+                    <button class="filter-btn active" data-type="line">📈 Línea</button>
+                    <button class="filter-btn" data-type="bar">📊 Barras</button>
+                    <button class="filter-btn" data-type="horizontalBar">📋 Horiz</button>
+                  </div>
+                  <div class="color-picker-group">
+                    <span class="color-dot active" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
+                    <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></span>
+                    <span class="color-dot" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa/Rojo"></span>
+                    <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
+                    <span class="color-dot" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="chart-container tall">
+                  <canvas id="chart-cpu-cores-timeline"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Details Grid -->
+        <div class="card-panel">
+          <div class="card-header">
+            <h3 class="card-header-title"><span>📋</span> Parámetros del Nodo y Plataforma</h3>
+          </div>
+          <div class="card-body">
+            <div class="info-list-grid" id="system-details-grid">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           PAGE 3: INTERFACES (Interfaces de Red y VLANs)
+           ==================================================================== -->
+      <section id="page-interfaces" class="page-view">
+        <div class="kpi-grid">
+          <div class="kpi-card cyan">
+            <div class="kpi-header"><span class="kpi-title">Total Interfaces</span><div class="kpi-icon">🔌</div></div>
+            <div class="kpi-value" id="kpi-total-ifs">56</div>
+            <div class="kpi-subtext">Física, Bonds y VLANs 802.1Q</div>
+          </div>
+          <div class="kpi-card emerald">
+            <div class="kpi-header"><span class="kpi-title">Interfaz de Mayor Tráfico</span><div class="kpi-icon">🚀</div></div>
+            <div class="kpi-value" style="font-size:22px;">bond1 / eth2-13</div>
+            <div class="kpi-subtext">Pico: 9.25 Gbps | Media: 878.5 Mbps</div>
+          </div>
+          <div class="kpi-card blue">
+            <div class="kpi-header"><span class="kpi-title">VLAN Más Activa</span><div class="kpi-icon">🏷️</div></div>
+            <div class="kpi-value" style="font-size:22px;">bond1.71</div>
+            <div class="kpi-subtext">Pico: 7.39 Gbps | Media: 472.6 Mbps</div>
+          </div>
+          <div class="kpi-card rose">
+            <div class="kpi-header"><span class="kpi-title">Errores y Drops HW</span><div class="kpi-icon">⚠️</div></div>
+            <div class="kpi-value">0</div>
+            <div class="kpi-subtext"><span class="badge-trend positive">Excelente</span> Sin pérdidas en buffers HW</div>
+          </div>
+        </div>
+
+        <!-- Interfaces comparison chart -->
+        <div class="card-panel" style="margin-bottom: 24px;">
+          <div class="card-header">
+            <div>
+              <h3 class="card-header-title"><span>📶</span> Top 10 Interfaces por Throughput Máximo (Mbps)</h3>
+              <p class="card-header-subtitle">Comparación de Throughput Rx y Tx en picos</p>
+            </div>
+            <div class="chart-controls" data-chart="chart-top-interfaces">
+              <div class="filter-btn-group chart-type-group">
+                <button class="filter-btn active" data-type="line">📈 Línea</button>
+                <button class="filter-btn" data-type="bar">📊 Barras</button>
+                <button class="filter-btn" data-type="horizontalBar">📋 Horiz</button>
+              </div>
+              <div class="color-picker-group">
+                <span class="color-dot active" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
+                <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></span>
+                <span class="color-dot" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa/Rojo"></span>
+                <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
+                <span class="color-dot" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="chart-top-interfaces"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Interfaces Table -->
+        <div class="card-panel">
+          <div class="card-header">
+            <h3 class="card-header-title"><span>📑</span> Catálogo Completo de Interfaces de Red</h3>
+            <div class="card-actions">
+              <div class="search-input-wrapper">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="filter-interfaces-search" class="search-input" placeholder="Buscar por nombre, VLAN o IP...">
+              </div>
+              <div class="filter-btn-group" id="filter-if-type">
+                <button class="filter-btn active" data-type="ALL">Todos</button>
+                <button class="filter-btn" data-type="vlan">VLAN</button>
+                <button class="filter-btn" data-type="bond">Bond</button>
+                <button class="filter-btn" data-type="ethernet">Ethernet</button>
+              </div>
+              <button class="btn btn-sm btn-outline btn-open-chart-gen" data-source="interfaces" title="Crear gráfico personalizado a partir de interfaces">
+                <span>📊</span> Graficar Interfaces
+              </button>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table" id="table-interfaces">
+              <thead>
+                <tr>
+                  <th data-sort="name">Nombre Interfaz</th>
+                  <th data-sort="type">Tipo</th>
+                  <th data-sort="speed">Velocidad</th>
+                  <th data-sort="state">Estado</th>
+                  <th data-sort="ipv4">Dirección IPv4 / Máscara</th>
+                  <th data-sort="rx_avg_mbps">Rx Media (Mbps)</th>
+                  <th data-sort="rx_max_mbps">Rx Pico (Mbps)</th>
+                  <th data-sort="tx_avg_mbps">Tx Media (Mbps)</th>
+                  <th data-sort="tx_max_mbps">Tx Pico (Mbps)</th>
+                  <th>Drops / Errores</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-interfaces">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           PAGE 4: TRAFFIC & CONNECTIONS (Conexiones concurrentes y tasas)
+           ==================================================================== -->
+      <section id="page-traffic" class="page-view">
+        <div class="kpi-grid">
+          <div class="kpi-card cyan">
+            <div class="kpi-header"><span class="kpi-title">Conexiones FW Media</span><div class="kpi-icon">📊</div></div>
+            <div class="kpi-value">400,639</div>
+            <div class="kpi-subtext">Handshake + Establecidas + No-TCP</div>
+          </div>
+          <div class="kpi-card emerald">
+            <div class="kpi-header"><span class="kpi-title">Conexiones Host SecureXL</span><div class="kpi-icon">⚡</div></div>
+            <div class="kpi-value">36,638</div>
+            <div class="kpi-subtext">Pico acelerado: <strong>112,901</strong></div>
+          </div>
+          <div class="kpi-card amber">
+            <div class="kpi-header"><span class="kpi-title">Tasa Máxima Nuevas Conexiones</span><div class="kpi-icon">📈</div></div>
+            <div class="kpi-value">396,498 /s</div>
+            <div class="kpi-subtext">Media: <strong>7,940 conns/sec</strong></div>
+          </div>
+          <div class="kpi-card blue">
+            <div class="kpi-header"><span class="kpi-title">Tasa Máxima Paquetes</span><div class="kpi-icon">📦</div></div>
+            <div class="kpi-value">113.6 M /s</div>
+            <div class="kpi-subtext">Inbound packet rate peak</div>
+          </div>
+        </div>
+
+        <div class="charts-grid">
+          <div class="col-12">
+            <div class="card-panel">
+              <div class="card-header">
+                <div>
+                  <h3 class="card-header-title"><span>🛡️</span> Desglose de Conexiones Concurrentes por Componente</h3>
+                  <p class="card-header-subtitle">Comparativa temporal de Firewall (FW), Host SXL y Host Streaming</p>
+                </div>
+                <div class="chart-controls" data-chart="chart-conns-timeline">
+                  <div class="filter-btn-group chart-type-group">
+                    <button class="filter-btn active" data-type="line">📈 Línea</button>
+                    <button class="filter-btn" data-type="bar">📊 Barras</button>
+                    <button class="filter-btn" data-type="horizontalBar">📋 Horiz</button>
+                  </div>
+                  <div class="color-picker-group">
+                    <span class="color-dot active" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
+                    <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></span>
+                    <span class="color-dot" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa/Rojo"></span>
+                    <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
+                    <span class="color-dot" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="chart-container tall">
+                  <canvas id="chart-conns-timeline"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-6">
+            <div class="card-panel">
+              <div class="card-header">
+                <h3 class="card-header-title"><span>🔄</span> Estados de Conexión Firewall</h3>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="chart-conns-states"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-6">
+            <div class="card-panel">
+              <div class="card-header">
+                <h3 class="card-header-title"><span>⚡</span> Tasa de Nuevas Conexiones (Conns/sec)</h3>
+                <div class="chart-controls" data-chart="chart-conn-rate-timeline">
+                  <div class="filter-btn-group chart-type-group">
+                    <button class="filter-btn active" data-type="line">📈 Línea</button>
+                    <button class="filter-btn" data-type="bar">📊 Barras</button>
+                    <button class="filter-btn" data-type="horizontalBar">📋 Horiz</button>
+                  </div>
+                  <div class="color-picker-group">
+                    <span class="color-dot active" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
+                    <span class="color-dot" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
+                    <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></span>
+                    <span class="color-dot" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa/Rojo"></span>
+                    <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="chart-conn-rate-timeline"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           PAGE 5: DROPS (Descartes de Paquetes)
+           ==================================================================== -->
+      <section id="page-drops" class="page-view">
+        <div class="kpi-grid">
+          <div class="kpi-card rose">
+            <div class="kpi-header"><span class="kpi-title">Total Caídas por Reglas</span><div class="kpi-icon">⛔</div></div>
+            <div class="kpi-value">124.40 M</div>
+            <div class="kpi-subtext">Reason 7: Rulebase Drop (Políticas)</div>
+          </div>
+          <div class="kpi-card amber">
+            <div class="kpi-header"><span class="kpi-title">Caídas por Streaming (PSL)</span><div class="kpi-icon">⚠️</div></div>
+            <div class="kpi-value">2.03 M</div>
+            <div class="kpi-subtext">Reason 177: General PSL</div>
+          </div>
+          <div class="kpi-card cyan">
+            <div class="kpi-header"><span class="kpi-title">Anti-Spoofing PPAK Drops</span><div class="kpi-icon">🛡️</div></div>
+            <div class="kpi-value">21.02 M</div>
+            <div class="kpi-subtext">Aceleradas por kernel PPAK</div>
+          </div>
+          <div class="kpi-card purple">
+            <div class="kpi-header"><span class="kpi-title">Drop Templates</span><div class="kpi-icon">📄</div></div>
+            <div class="kpi-value">14.29 M</div>
+            <div class="kpi-subtext">Plantillas de descarte rápido SecureXL</div>
+          </div>
+        </div>
+
+        <div class="charts-grid">
+          <div class="col-8">
+            <div class="card-panel">
+              <div class="card-header">
+                <h3 class="card-header-title"><span>📉</span> Evolución Horaria de Paquetes Descartados</h3>
+                <div class="chart-controls" data-chart="chart-drops-hourly-timeline">
+                  <div class="filter-btn-group chart-type-group">
+                    <button class="filter-btn active" data-type="line">📈 Línea</button>
+                    <button class="filter-btn" data-type="bar">📊 Barras</button>
+                    <button class="filter-btn" data-type="horizontalBar">📋 Horiz</button>
+                  </div>
+                  <div class="color-picker-group">
+                    <span class="color-dot active" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa/Rojo"></span>
+                    <span class="color-dot" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
+                    <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></span>
+                    <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
+                    <span class="color-dot" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="chart-container tall">
+                  <canvas id="chart-drops-hourly-timeline"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-4">
+            <div class="card-panel">
+              <div class="card-header">
+                <h3 class="card-header-title"><span>🛡️</span> PPAK 0 Drops Category</h3>
+              </div>
+              <div class="card-body">
+                <div class="chart-container tall">
+                  <canvas id="chart-ppak-drops-pie"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Drops Table -->
+        <div class="card-panel">
+          <div class="card-header">
+            <h3 class="card-header-title"><span>📋</span> Tabla Detallada de Razones de Descarte (fwdrop_drop_resaons_tab)</h3>
+            <div class="card-actions">
+              <button class="btn btn-sm btn-outline btn-open-chart-gen" data-source="drop-reasons" title="Crear gráfico personalizado de razones de descarte">
+                <span>📊</span> Graficar Descartes
+              </button>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table" id="table-drop-reasons">
+              <thead>
+                <tr>
+                  <th>Código Razón</th>
+                  <th>Descripción del Descarte</th>
+                  <th>Módulo Afectado</th>
+                  <th>Total Paquetes</th>
+                  <th>Porcentaje del Total</th>
+                  <th>Impacto Operativo</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-drop-reasons">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           PAGE 6: SPIKE DETECTIVE (Diagnóstico de Picos y Procesos)
+           ==================================================================== -->
+      <section id="page-spikes" class="page-view">
+        <div class="kpi-grid">
+          <div class="kpi-card amber">
+            <div class="kpi-header"><span class="kpi-title">Picos de CPU Registrados</span><div class="kpi-icon">⚡</div></div>
+            <div class="kpi-value" id="kpi-cpu-spikes-cnt">1,979</div>
+            <div class="kpi-subtext">Eventos detectados por Spike Detective</div>
+          </div>
+          <div class="kpi-card purple">
+            <div class="kpi-header"><span class="kpi-title">Picos de Threads</span><div class="kpi-icon">🧵</div></div>
+            <div class="kpi-value" id="kpi-thread-spikes-cnt">1,092</div>
+            <div class="kpi-subtext">Hilos individuales de alta carga</div>
+          </div>
+          <div class="kpi-card rose">
+            <div class="kpi-header"><span class="kpi-title">Consumidor Principal</span><div class="kpi-icon">🔥</div></div>
+            <div class="kpi-value" style="font-size:22px;">fwk0_1 (898 picos)</div>
+            <div class="kpi-subtext">Firewall Kernel Worker Core 1</div>
+          </div>
+          <div class="kpi-card cyan">
+            <div class="kpi-header"><span class="kpi-title">Duración Máxima</span><div class="kpi-icon">⏱️</div></div>
+            <div class="kpi-value">3.53 h</div>
+            <div class="kpi-subtext">12,717 seg continuos en fwk0_0</div>
+          </div>
+        </div>
+
+        <!-- Spike Severity Filter Toolbar -->
+        <div class="card-panel" style="margin-bottom: 24px; padding: 14px 20px; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255, 255, 255, 0.08);">
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px;">
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <span style="font-size: 13px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 6px;">
+                <span>🚨</span> Nivel Mínimo de Alarma:
+              </span>
+              <div class="filter-btn-group" id="group-spike-severity">
+                <button class="filter-btn active" data-severity="all">Todos los Niveles</button>
+                <button class="filter-btn" data-severity="moderate">🟡 Moderado (≥ 75%)</button>
+                <button class="filter-btn" data-severity="high">🟠 Alto (≥ 80%)</button>
+                <button class="filter-btn" data-severity="critical">🔴 Solo Crítico (≥ 90%)</button>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span class="pill-badge eth" id="spike-filter-badge" style="font-size: 12px; padding: 4px 10px;">
+                Mostrando 1,979 picos
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Spikes Charts Row 1: Timeline & Cores Distribution -->
+        <div class="charts-grid">
+          <div class="col-8">
+            <div class="card-panel">
+              <div class="card-header">
+                <div>
+                  <h3 class="card-header-title"><span>📈</span> Frecuencia Temporal de Picos de CPU (Día a Día)</h3>
+                  <p class="card-header-subtitle">Cantidad de eventos de pico detectados por fecha en el nodo</p>
+                </div>
+                <div class="chart-controls" data-chart="chart-spikes-timeline">
+                  <div class="filter-btn-group chart-type-group">
+                    <button class="filter-btn active" data-type="line">📈 Línea</button>
+                    <button class="filter-btn" data-type="bar">📊 Barras</button>
+                    <button class="filter-btn" data-type="horizontalBar">📋 Horiz</button>
+                  </div>
+                  <div class="color-picker-group">
+                    <span class="color-dot active" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></span>
+                    <span class="color-dot" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
+                    <span class="color-dot" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa/Rojo"></span>
+                    <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
+                    <span class="color-dot" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="chart-spikes-timeline"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-4">
+            <div class="card-panel">
+              <div class="card-header">
+                <div>
+                  <h3 class="card-header-title"><span>🧩</span> Distribución por Core</h3>
+                  <p class="card-header-subtitle">Concentración de picos por núcleo CPU</p>
+                </div>
+                <div class="chart-controls" data-chart="chart-spikes-cores">
+                  <div class="filter-btn-group chart-type-group">
+                    <button class="filter-btn active" data-type="doughnut">🍩 Anillo</button>
+                    <button class="filter-btn" data-type="line">📈 Línea</button>
+                    <button class="filter-btn" data-type="bar">📊 Barras</button>
+                    <button class="filter-btn" data-type="horizontalBar">📋 Horiz</button>
+                  </div>
+                  <div class="color-picker-group">
+                    <span class="color-dot active" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
+                    <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></span>
+                    <span class="color-dot" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa/Rojo"></span>
+                    <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
+                    <span class="color-dot" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="chart-spikes-cores"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Spikes Charts Row 2: Top Consumers & Threads -->
+        <div class="charts-grid">
+          <div class="col-6">
+            <div class="card-panel">
+              <div class="card-header">
+                <div>
+                  <h3 class="card-header-title"><span>🔥</span> Top Procesos Consumidores de Picos CPU</h3>
+                  <p class="card-header-subtitle">Procesos con mayor frecuencia y severidad de picos</p>
+                </div>
+                <div class="chart-controls" data-chart="chart-spikes-consumers">
+                  <div class="filter-btn-group chart-type-group">
+                    <button class="filter-btn active" data-type="line">📈 Línea</button>
+                    <button class="filter-btn" data-type="bar">📊 Barras</button>
+                    <button class="filter-btn" data-type="horizontalBar">📋 Horiz</button>
+                  </div>
+                  <div class="color-picker-group">
+                    <span class="color-dot active" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa/Rojo"></span>
+                    <span class="color-dot" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
+                    <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></span>
+                    <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
+                    <span class="color-dot" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="chart-spikes-consumers"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-6">
+            <div class="card-panel">
+              <div class="card-header">
+                <div>
+                  <h3 class="card-header-title"><span>🧵</span> Picos por Hilo (Thread Name)</h3>
+                  <p class="card-header-subtitle">Hilos individuales de mayor consumo sostenido</p>
+                </div>
+                <div class="chart-controls" data-chart="chart-thread-consumers">
+                  <div class="filter-btn-group chart-type-group">
+                    <button class="filter-btn active" data-type="line">📈 Línea</button>
+                    <button class="filter-btn" data-type="bar">📊 Barras</button>
+                    <button class="filter-btn" data-type="horizontalBar">📋 Horiz</button>
+                  </div>
+                  <div class="color-picker-group">
+                    <span class="color-dot active" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
+                    <span class="color-dot" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
+                    <span class="color-dot" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa/Rojo"></span>
+                    <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></span>
+                    <span class="color-dot" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="chart-thread-consumers"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Spikes Log Table -->
+        <div class="card-panel">
+          <div class="card-header">
+            <h3 class="card-header-title"><span>📋</span> Registro de Eventos de Spike Detective (CPU Spikes)</h3>
+            <div class="card-actions">
+              <div class="search-input-wrapper">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="filter-spikes-search" class="search-input" placeholder="Filtrar por proceso (fwk, pdpd, sqlite)...">
+              </div>
+              <button class="btn btn-sm btn-outline btn-open-chart-gen" data-source="cpu-spikes" title="Crear gráfico personalizado de eventos de CPU">
+                <span>📊</span> Graficar Eventos
+              </button>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table" id="table-cpu-spikes">
+              <thead>
+                <tr>
+                  <th>Fecha y Hora UTC</th>
+                  <th>Core</th>
+                  <th>Proceso Consumidor</th>
+                  <th>Uso Medio CPU</th>
+                  <th>Duración (seg)</th>
+                  <th>Severidad</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-cpu-spikes">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination-bar">
+            <span id="spikes-pagination-info">Mostrando 1 - 25 de 1,979 eventos</span>
+            <div class="pagination-controls">
+              <button class="btn" id="btn-spikes-prev">◀ Anterior</button>
+              <button class="btn" id="btn-spikes-next">Siguiente ▶</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           PAGE 7: FLOW PROFILER (Flofiler)
+           ==================================================================== -->
+      <section id="page-flofiler" class="page-view">
+        <div class="kpi-grid">
+          <div class="kpi-card cyan">
+            <div class="kpi-header"><span class="kpi-title">Protocolo L4 Líder</span><div class="kpi-icon">🌐</div></div>
+            <div class="kpi-value" style="font-size:22px;">TCP:1024 / UDP:53</div>
+            <div class="kpi-subtext">9.3M y 9.1M ciclos de CPU</div>
+          </div>
+          <div class="kpi-card purple">
+            <div class="kpi-header"><span class="kpi-title">Módulo Kernel Líder</span><div class="kpi-icon">⚙️</div></div>
+            <div class="kpi-value" style="font-size:22px;">Chain modules</div>
+            <div class="kpi-subtext">23.8M ciclos de inspección secuencial</div>
+          </div>
+          <div class="kpi-card blue">
+            <div class="kpi-header"><span class="kpi-title">Inbound F2F</span><div class="kpi-icon">📥</div></div>
+            <div class="kpi-value">6.02 M</div>
+            <div class="kpi-subtext">Ciclos en paso Forward to Firewall</div>
+          </div>
+          <div class="kpi-card emerald">
+            <div class="kpi-header"><span class="kpi-title">Inspección de Reglas</span><div class="kpi-icon">📜</div></div>
+            <div class="kpi-value">1.13 M</div>
+            <div class="kpi-subtext">Ciclos dedicados a Access Rulebase</div>
+          </div>
+        </div>
+
+        <div class="charts-grid">
+          <div class="col-6">
+            <div class="card-panel">
+              <div class="card-header">
+                <h3 class="card-header-title"><span>📊</span> Top Protocolos y Servicios por Ciclos de CPU</h3>
+                <div class="chart-controls" data-chart="chart-flofiler-protocols">
+                  <div class="filter-btn-group chart-type-group">
+                    <button class="filter-btn active" data-type="line">📈 Línea</button>
+                    <button class="filter-btn" data-type="bar">📊 Barras</button>
+                    <button class="filter-btn" data-type="horizontalBar">📋 Horiz</button>
+                  </div>
+                  <div class="color-picker-group">
+                    <span class="color-dot active" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
+                    <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></span>
+                    <span class="color-dot" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa/Rojo"></span>
+                    <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
+                    <span class="color-dot" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="chart-container tall">
+                  <canvas id="chart-flofiler-protocols"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-6">
+            <div class="card-panel">
+              <div class="card-header">
+                <h3 class="card-header-title"><span>🧩</span> Top Componentes de Inspección Check Point</h3>
+                <div class="chart-controls" data-chart="chart-flofiler-components">
+                  <div class="filter-btn-group chart-type-group">
+                    <button class="filter-btn active" data-type="line">📈 Línea</button>
+                    <button class="filter-btn" data-type="bar">📊 Barras</button>
+                    <button class="filter-btn" data-type="horizontalBar">📋 Horiz</button>
+                  </div>
+                  <div class="color-picker-group">
+                    <span class="color-dot" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
+                    <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></span>
+                    <span class="color-dot" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa/Rojo"></span>
+                    <span class="color-dot active" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
+                    <span class="color-dot" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="chart-container tall">
+                  <canvas id="chart-flofiler-components"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           PAGE 8: SECUREXL & COREXL
+           ==================================================================== -->
+      <section id="page-securexl" class="page-view">
+        <div class="kpi-grid">
+          <div class="kpi-card emerald">
+            <div class="kpi-header"><span class="kpi-title">Estado SecureXL</span><div class="kpi-icon">⚡</div></div>
+            <div class="kpi-value" style="color:var(--accent-emerald);">Activado (On)</div>
+            <div class="kpi-subtext">100% del periodo de monitorización</div>
+          </div>
+          <div class="kpi-card cyan">
+            <div class="kpi-header"><span class="kpi-title">Colas de Enqueue Fails</span><div class="kpi-icon">📦</div></div>
+            <div class="kpi-value">5.83 B</div>
+            <div class="kpi-subtext">F2P packet userspace (Multik)</div>
+          </div>
+          <div class="kpi-card amber">
+            <div class="kpi-header"><span class="kpi-title">Inbound Packet Userspace</span><div class="kpi-icon">📥</div></div>
+            <div class="kpi-value">43.78 M</div>
+            <div class="kpi-subtext">Multik enqueue fail count</div>
+          </div>
+          <div class="kpi-card purple">
+            <div class="kpi-header"><span class="kpi-title">PPAK VS0 Throughput Pico</span><div class="kpi-icon">🚀</div></div>
+            <div class="kpi-value">8.27 Gbps</div>
+            <div class="kpi-subtext">Acelerado en nodo virtual 0</div>
+          </div>
+        </div>
+
+        <div class="charts-grid">
+          <div class="col-6">
+            <div class="card-panel">
+              <div class="card-header">
+                <h3 class="card-header-title"><span>🔄</span> Razones de F2V (Forward to Virtual / CoreXL)</h3>
+                <div class="chart-controls" data-chart="chart-sxl-f2v">
+                  <div class="filter-btn-group chart-type-group">
+                    <button class="filter-btn active" data-type="line">📈 Línea</button>
+                    <button class="filter-btn" data-type="bar">📊 Barras</button>
+                    <button class="filter-btn" data-type="horizontalBar">📋 Horiz</button>
+                  </div>
+                  <div class="color-picker-group">
+                    <span class="color-dot active" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
+                    <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></span>
+                    <span class="color-dot" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa/Rojo"></span>
+                    <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
+                    <span class="color-dot" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="chart-sxl-f2v"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-6">
+            <div class="card-panel">
+              <div class="card-header">
+                <h3 class="card-header-title"><span>📦</span> Multik Dispatcher Enqueue Fails</h3>
+                <div class="chart-controls" data-chart="chart-multik-fails">
+                  <div class="filter-btn-group chart-type-group">
+                    <button class="filter-btn active" data-type="line">📈 Línea</button>
+                    <button class="filter-btn" data-type="bar">📊 Barras</button>
+                    <button class="filter-btn" data-type="horizontalBar">📋 Horiz</button>
+                  </div>
+                  <div class="color-picker-group">
+                    <span class="color-dot" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
+                    <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></span>
+                    <span class="color-dot active" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa/Rojo"></span>
+                    <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
+                    <span class="color-dot" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="chart-multik-fails"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <div class="card-panel">
+              <div class="card-header">
+                <h3 class="card-header-title"><span>📈</span> PPAK VS0 - Throughput y Conexiones Aceleradas</h3>
+                <div class="chart-controls" data-chart="chart-ppak-hourly-timeline">
+                  <div class="filter-btn-group chart-type-group">
+                    <button class="filter-btn active" data-type="line">📈 Línea</button>
+                    <button class="filter-btn" data-type="bar">📊 Barras</button>
+                  </div>
+                  <div class="color-picker-group">
+                    <span class="color-dot active" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
+                    <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></span>
+                    <span class="color-dot" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa/Rojo"></span>
+                    <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
+                    <span class="color-dot" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="chart-ppak-hourly-timeline"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           PAGE 9: BLADES & VPN
+           ==================================================================== -->
+      <section id="page-blades" class="page-view">
+        <div class="kpi-grid">
+          <div class="kpi-card cyan">
+            <div class="kpi-header"><span class="kpi-title">Conexiones Seguras TLS</span><div class="kpi-icon">🔒</div></div>
+            <div class="kpi-value">TLS 1.2 & 1.3</div>
+            <div class="kpi-subtext">Soporte criptográfico activo</div>
+          </div>
+          <div class="kpi-card purple">
+            <div class="kpi-header"><span class="kpi-title">VPN IPsec / IKE SAs</span><div class="kpi-icon">🛡️</div></div>
+            <div class="kpi-value">Túneles Monitoreados</div>
+            <div class="kpi-subtext">Cero errores de negociación IKE</div>
+          </div>
+          <div class="kpi-card emerald">
+            <div class="kpi-header"><span class="kpi-title">Firmas Anti-Virus / Bot</span><div class="kpi-icon">🦠</div></div>
+            <div class="kpi-value" style="color:var(--accent-emerald);">Actualizado</div>
+            <div class="kpi-subtext">Módulos AV Lite y App Control</div>
+          </div>
+          <div class="kpi-card blue">
+            <div class="kpi-header"><span class="kpi-title">Log Tracker Promedio</span><div class="kpi-icon">📜</div></div>
+            <div class="kpi-value" id="kpi-tracker-conns">6.7k /s</div>
+            <div class="kpi-subtext">Tasa de registro de conexiones</div>
+          </div>
+        </div>
+
+        <div class="charts-grid">
+          <div class="col-12">
+            <div class="card-panel">
+              <div class="card-header">
+                <h3 class="card-header-title"><span>🔐</span> Actividad de Túneles VPN (Peers e IKE SAs)</h3>
+                <div class="chart-controls" data-chart="chart-vpn-timeline">
+                  <div class="filter-btn-group chart-type-group">
+                    <button class="filter-btn active" data-type="line">📈 Línea</button>
+                    <button class="filter-btn" data-type="bar">📊 Barras</button>
+                    <button class="filter-btn" data-type="horizontalBar">📋 Horiz</button>
+                  </div>
+                  <div class="color-picker-group">
+                    <span class="color-dot active" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
+                    <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></span>
+                    <span class="color-dot" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa/Rojo"></span>
+                    <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
+                    <span class="color-dot" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="chart-vpn-timeline"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           PAGE 10: DATABASE EXPLORER (Explorador SQLite Completo)
+           ==================================================================== -->
+      <section id="page-db_explorer" class="page-view">
+        <!-- SQL Query Box -->
+        <div class="sql-console">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-size:13px; font-weight:600; color:#fff;">⚡ Consola de Consulta SQL Directa (Solo Lectura)</span>
+            <span style="font-size:11px; color:var(--text-dim); font-family:var(--font-mono);">Base de datos: SG_FWNET-ch01-01... (1.34 GB)</span>
+          </div>
+          <textarea id="sql-query-input" class="sql-input" placeholder="SELECT * FROM UM_STAT_UM_SYSTEM ORDER BY Timestamp DESC LIMIT 10;">SELECT * FROM UM_STAT_UM_SYSTEM ORDER BY Timestamp DESC LIMIT 10;</textarea>
+          <div class="sql-actions">
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-primary" id="btn-run-sql">▶ Ejecutar SQL</button>
+              <button class="btn" id="btn-sql-example-1">Ejemplo: CPU</button>
+              <button class="btn" id="btn-sql-example-2">Ejemplo: Discos</button>
+              <button class="btn" id="btn-sql-example-3">Ejemplo: Spikes</button>
+            </div>
+            <span id="sql-status" style="font-size:12px; color:var(--text-muted);">Listo</span>
+          </div>
+        </div>
+
+        <!-- SQL Query Results Table -->
+        <div class="card-panel" id="sql-results-panel" style="display:none; margin-bottom:24px;">
+          <div class="card-header">
+            <h3 class="card-header-title"><span>📊</span> Resultado de Consulta SQL</h3>
+            <div class="card-actions">
+              <button class="btn btn-sm btn-outline btn-open-chart-gen" data-source="sql-results" id="btn-chart-sql-results" title="Crear gráfico a partir de estos resultados SQL">
+                <span>📊</span> Graficar Resultados
+              </button>
+              <button class="btn" id="btn-close-sql-results">✕ Cerrar</button>
+            </div>
+          </div>
+          <div class="table-responsive" style="max-height: 400px; overflow-y:auto;">
+            <table class="data-table" id="table-sql-results">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Tables Catalog -->
+        <div class="card-panel">
+          <div class="card-header">
+            <div>
+              <h3 class="card-header-title"><span>🗄️</span> Catálogo de Tablas en la Base de Datos SQLite (122 Tablas Activas)</h3>
+              <p class="card-header-subtitle">Haz clic en cualquier tabla para abrir el visor interactivo de registros</p>
+            </div>
+            <div class="card-actions">
+              <div class="search-input-wrapper">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="filter-catalog-search" class="search-input" placeholder="Filtrar tablas (ej. CPU, HW, vpn, fw)...">
+              </div>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table" id="table-catalog">
+              <thead>
+                <tr>
+                  <th>Nombre de Tabla</th>
+                  <th>Categoría / Prefijo</th>
+                  <th>Total Registros</th>
+                  <th>Nº Columnas</th>
+                  <th>Columnas Clave</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-catalog">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ======================================================================
+       Modal: Table Live Record Viewer
+       ====================================================================== -->
+  <div class="modal-overlay" id="modal-table-viewer">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title" id="modal-table-name">Tabla: UM_STAT_UM_SYSTEM</h2>
+          <span style="font-size:12px; color:var(--text-muted);" id="modal-table-subtitle">Registros directos con resolución de referencias CPView</span>
+        </div>
+        <button class="modal-close" id="btn-modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="search-bar-row" style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <div class="search-input-wrapper" style="flex:1;">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="modal-search-input" class="search-input" placeholder="Filtrar filas actuales...">
+          </div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <button class="btn btn-sm btn-primary btn-open-chart-gen" data-source="modal-table" id="btn-chart-modal-table" title="Crear gráfico personalizado con los registros de esta tabla">
+              <span>📊</span> Graficar Registros
+            </button>
+            <div style="font-size:12px; color:var(--text-muted);" id="modal-row-count-badge">
+              Cargando registros...
+            </div>
+          </div>
+        </div>
+        <div class="table-responsive" style="max-height: 480px; overflow-y:auto;">
+          <table class="data-table" id="modal-table-content">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="pagination-bar">
+        <span id="modal-pagination-info">Página 1</span>
+        <div class="pagination-controls">
+          <button class="btn" id="modal-btn-prev">◀ Anterior</button>
+          <button class="btn" id="modal-btn-next">Siguiente ▶</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       Modal: Load / Switch Database (Cargar Otra Máquina)
+       ====================================================================== -->
+  <div class="modal-overlay" id="modal-load-database">
+    <div class="modal-card" style="max-width: 800px;">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title">📂 Cargar Datos de Otra Máquina CPView</h2>
+          <span style="font-size:12px; color:var(--text-muted);">
+            Visualiza y analiza el rendimiento de cualquier nodo Check Point (ficheros .CPViewDB.dat o .sqlite)
+          </span>
+        </div>
+        <button class="modal-close" id="btn-modal-load-close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Tab Bar -->
+        <div class="db-tabs-bar">
+          <button class="db-tab-btn active" data-tab="tab-detected-dbs">
+            <span>📁</span> Ficheros en Servidor
+          </button>
+          <button class="db-tab-btn" data-tab="tab-upload-db">
+            <span>⬆️</span> Subir Nuevo Fichero
+          </button>
+          <button class="db-tab-btn" data-tab="tab-path-db">
+            <span>🖥️</span> Ruta en Servidor
+          </button>
+        </div>
+
+        <!-- TAB 1: Detected Databases in workspace -->
+        <div id="tab-detected-dbs" class="db-tab-content active">
+          <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">
+            Bases de datos CPView detectadas automáticamente en el directorio de la aplicación:
+          </p>
+          <div class="db-list-grid" id="db-list-container">
+            <!-- Dynamically populated -->
+            <div style="text-align:center; padding:30px; color:var(--text-muted); grid-column:1/-1;">
+              <div class="spinner"></div> Buscando bases de datos disponibles...
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: Upload file from user machine -->
+        <div id="tab-upload-db" class="db-tab-content">
+          <div class="dropzone" id="db-dropzone">
+            <input type="file" id="db-file-input" style="display:none;" accept=".dat,.db,.sqlite,.sqlite3">
+            <div class="dropzone-icon">☁️</div>
+            <div class="dropzone-title">Arrastra y suelta aquí el fichero de otra máquina</div>
+            <div class="dropzone-desc">
+              Selecciona cualquier archivo <code>.CPViewDB.dat</code> o base de datos SQLite extraída de un Check Point Security Gateway o VSX.
+            </div>
+            <button class="btn btn-primary" type="button" id="btn-browse-file" style="margin-top:8px;">
+              📁 Explorar Fichero Local
+            </button>
+          </div>
+
+          <!-- Upload Progress -->
+          <div class="upload-progress-box" id="upload-progress-box">
+            <div class="upload-status-text">
+              <span id="upload-status-label">Subiendo fichero...</span>
+              <strong id="upload-status-pct" style="color:var(--accent-cyan);">0%</strong>
+            </div>
+            <div class="progress-bar-track">
+              <div class="progress-bar-fill" id="upload-progress-fill"></div>
+            </div>
+            <p id="upload-status-sub" style="font-size:11px; color:var(--text-dim); margin-top:6px;">
+              Transfiriendo y procesando métricas...
+            </p>
+          </div>
+        </div>
+
+        <!-- TAB 3: Load by server path -->
+        <div id="tab-path-db" class="db-tab-content">
+          <p style="font-size:13px; color:var(--text-muted);">
+            Introduce la ruta absoluta o relativa de un fichero SQLite CPView existente en el servidor:
+          </p>
+          <div class="path-input-group">
+            <input type="text" id="input-server-path" class="path-input" placeholder="/ruta/hacia/SG_OTRO-NODO_CPViewDB.dat">
+            <button class="btn btn-primary" id="btn-load-server-path">
+              <span>▶</span> Cargar Fichero
+            </button>
+          </div>
+          <p style="font-size:11px; color:var(--text-dim); margin-top:8px;">
+            Ejemplo: <code>./SG_FWNET-ch01-01_2_4_2024_16_27.CPViewDB.dat</code>
+          </p>
+          <div id="path-load-status" style="margin-top:12px; font-size:12px;"></div>
+        </div>
+
+        <!-- Extraction loading state -->
+        <div id="db-loading-overlay" style="display:none; text-align:center; padding:30px 20px;">
+          <div class="spinner" style="width:36px; height:36px; border-width:3px; margin-bottom:14px;"></div>
+          <h3 style="color:#fff; font-size:16px;" id="db-loading-title">Extrayendo datos de la máquina...</h3>
+          <p style="font-size:12px; color:var(--text-muted); margin-top:6px;" id="db-loading-desc">
+            Agregando series temporales y resolviendo tablas de referencias CPView...
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       Modal: Custom Table Chart Generator
+       ====================================================================== -->
+  <div class="modal-overlay" id="modal-custom-chart-generator">
+    <div class="modal-card chart-gen-modal-card">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span style="font-size:24px;">📊</span>
+          <div>
+            <h2 class="modal-title" id="chartgen-source-title">Creador de Gráficos Personalizados</h2>
+            <span style="font-size:12px; color:var(--text-muted);" id="chartgen-source-sub">
+              Configura los ejes, operaciones y agrupaciones temporales
+            </span>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button class="btn btn-sm btn-outline" id="btn-chartgen-toggle-controls" title="Ocultar o mostrar controles de selección para más espacio de gráfico">
+            <span id="icon-toggle-controls">👁️</span> <span id="lbl-toggle-controls">Ocultar Controles</span>
+          </button>
+          <button class="btn btn-sm btn-outline" id="btn-chartgen-fullscreen" title="Pantalla completa / Restaurar tamaño">
+            <span id="icon-chartgen-fullscreen">⛶</span> <span id="lbl-chartgen-fullscreen">Pantalla Completa</span>
+          </button>
+          <select id="chartgen-table-selector" class="select-input" style="font-size:12px; padding:6px 10px; background:var(--bg-tertiary); border:1px solid var(--border-subtle); color:var(--text-primary); border-radius:6px; cursor:pointer;">
+            <option value="cpu-cores">🧩 Tabla: Cores CPU</option>
+            <option value="interfaces">🌐 Tabla: Interfaces</option>
+            <option value="drop-reasons">📋 Tabla: Razones de Descarte</option>
+            <option value="cpu-spikes">🔍 Tabla: Eventos Spike Detective</option>
+            <option value="sql-results">⚡ Tabla: Resultados SQL</option>
+            <option value="modal-table">🗄️ Tabla: Visor SQLite Activo</option>
+          </select>
+          <button class="modal-close" id="btn-modal-chartgen-close">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-body chart-gen-modal-body">
+        <!-- Configuration Controls Wrapper (Hideable) -->
+        <div class="chartgen-controls-wrapper" id="chartgen-controls-wrapper">
+          <!-- Configuration Controls Grid -->
+          <div class="chartgen-controls-grid">
+            <!-- Col 1: X Axis -->
+            <div class="chartgen-control-group">
+              <label class="chartgen-label" for="chartgen-x-col">
+                <span>📍</span> Eje X (Categoría / Dimensión / Tiempo)
+              </label>
+              <select id="chartgen-x-col" class="chartgen-select"></select>
+            </div>
+
+            <!-- Col 2: Timestamp interpretation -->
+            <div class="chartgen-control-group" id="chartgen-time-group">
+              <label class="chartgen-label" for="chartgen-time-format">
+                <span>⏱️</span> Tratamiento Temporal (Timestamp)
+              </label>
+              <select id="chartgen-time-format" class="chartgen-select">
+                <option value="none">Texto / Sin formato temporal</option>
+                <option value="datetime">📅 Fecha y Hora completa (DD/MM HH:mm)</option>
+                <option value="date" selected>📆 Sólamente Días (DD/MM/YYYY)</option>
+                <option value="hour">⏰ Sólamente Horas del día (00h - 23h)</option>
+                <option value="weekday">🗓️ Día de la semana (Lunes - Domingo)</option>
+                <option value="hour_datetime">⏱️ Por Hora cronológica (DD/MM HH:00)</option>
+                <option value="minute">⏱️ Por Minuto cronológico (DD/MM HH:mm)</option>
+              </select>
+            </div>
+
+            <!-- Col 3: Y Axis Metric -->
+            <div class="chartgen-control-group">
+              <label class="chartgen-label" for="chartgen-y-col">
+                <span>📈</span> Eje Y (Métrica / Valor a Representar)
+              </label>
+              <select id="chartgen-y-col" class="chartgen-select"></select>
+            </div>
+
+            <!-- Col 4: Aggregation Operation -->
+            <div class="chartgen-control-group">
+              <label class="chartgen-label" for="chartgen-op">
+                <span>🧮</span> Operación / Agregación
+              </label>
+              <select id="chartgen-op" class="chartgen-select">
+                <option value="SUM" selected>Sumatorio de Valores (SUM)</option>
+                <option value="SUM_DAY">📅 Sumatorio por Días (SUM por Día)</option>
+                <option value="SUM_HOUR">⏰ Sumatorio por Horas (SUM por Hora)</option>
+                <option value="SUM_MINUTE">⏱️ Sumatorio por Minutos (SUM por Minuto)</option>
+                <option value="COUNT">Conteo de Filas / Frecuencia (COUNT)</option>
+                <option value="AVG">Promedio / Media (AVG)</option>
+                <option value="MAX">Pico Máximo (MAX)</option>
+                <option value="MIN">Valor Mínimo (MIN)</option>
+                <option value="RAW">Valores Directos (Sin agrupar)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Filter Strip: Record Limits & Date Range -->
+          <div class="chartgen-filter-strip">
+            <div class="chartgen-filter-item">
+              <label class="chartgen-label" for="chartgen-record-slice">
+                <span>🔢</span> Selección / Límite de Registros
+              </label>
+              <select id="chartgen-record-slice" class="chartgen-select">
+                <option value="all" selected>Todos los registros de la tabla</option>
+                <option value="last-100">Últimos 100 registros (más recientes)</option>
+                <option value="last-500">Últimos 500 registros</option>
+                <option value="last-1000">Últimos 1,000 registros</option>
+                <option value="last-5000">Últimos 5,000 registros</option>
+                <option value="first-100">Primeros 100 registros (más antiguos)</option>
+                <option value="first-500">Primeros 500 registros</option>
+                <option value="first-1000">Primeros 1,000 registros</option>
+              </select>
+            </div>
+
+            <div class="chartgen-filter-item" id="chartgen-date-range-container">
+              <label class="chartgen-label">
+                <span>📅</span> Rango Temporal (Fecha Desde — Hasta)
+              </label>
+              <div class="chartgen-date-range-inputs">
+                <input type="datetime-local" id="chartgen-date-from" class="chartgen-date-input" title="Fecha y Hora Desde">
+                <span style="color:var(--text-muted); font-size:12px;">a</span>
+                <input type="datetime-local" id="chartgen-date-to" class="chartgen-date-input" title="Fecha y Hora Hasta">
+                <button class="btn btn-sm btn-outline" id="btn-chartgen-reset-dates" title="Limpiar rango de fechas (ver todo)">✕ Todo</button>
+              </div>
+            </div>
+
+            <div class="chartgen-filter-item" id="chartgen-quick-presets">
+              <label class="chartgen-label"><span>⚡</span> Atajos de Rango</label>
+              <div class="filter-btn-group" id="chartgen-time-shortcuts">
+                <button class="filter-btn active" data-days="0">Todo</button>
+                <button class="filter-btn" data-days="1">24h</button>
+                <button class="filter-btn" data-days="7">7d</button>
+                <button class="filter-btn" data-days="15">15d</button>
+                <button class="filter-btn" data-days="30">30d</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Toolbar: Chart Type, Sort, Limit, Palette -->
+          <div class="chartgen-toolbar">
+            <div class="chartgen-toolbar-section">
+              <span class="chartgen-toolbar-label">Tipo:</span>
+              <div class="chartgen-type-buttons" id="chartgen-type-group">
+                <button class="filter-btn active" data-type="bar" title="Barras verticales">📊 Barras</button>
+                <button class="filter-btn" data-type="horizontalBar" title="Barras horizontales">📉 Horiz</button>
+                <button class="filter-btn" data-type="line" title="Línea temporal o continua">📈 Línea</button>
+                <button class="filter-btn" data-type="area" title="Área con degradado">🏔️ Área</button>
+                <button class="filter-btn" data-type="pie" title="Gráfico circular de tarta">🥧 Tarta</button>
+                <button class="filter-btn" data-type="doughnut" title="Gráfico circular de donut">🍩 Donut</button>
+              </div>
+            </div>
+
+            <div class="chartgen-toolbar-section">
+              <span class="chartgen-toolbar-label">Ordenar:</span>
+              <select id="chartgen-sort" class="chartgen-select-sm">
+                <option value="y-desc">Mayor a Menor (Top Y)</option>
+                <option value="y-asc">Menor a Mayor (Y asc)</option>
+                <option value="x-asc">Eje X Ascendente (A-Z / Crono)</option>
+                <option value="x-desc">Eje X Descendente</option>
+                <option value="original">Orden Original de Filas</option>
+              </select>
+            </div>
+
+            <div class="chartgen-toolbar-section">
+              <span class="chartgen-toolbar-label">Límite:</span>
+              <select id="chartgen-limit" class="chartgen-select-sm">
+                <option value="0">Todos</option>
+                <option value="10">Top 10</option>
+                <option value="15" selected>Top 15</option>
+                <option value="25">Top 25</option>
+                <option value="50">Top 50</option>
+              </select>
+            </div>
+
+            <div class="chartgen-toolbar-section">
+              <span class="chartgen-toolbar-label">Color:</span>
+              <div class="chartgen-palette-group" id="chartgen-palette-group">
+                <button class="palette-swatch active" data-color="#06b6d4" style="background:#06b6d4;" title="Cian Check Point"></button>
+                <button class="palette-swatch" data-color="#f43f5e" style="background:#f43f5e;" title="Rosa / Alerta"></button>
+                <button class="palette-swatch" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></button>
+                <button class="palette-swatch" data-color="#8b5cf6" style="background:#8b5cf6;" title="Violeta"></button>
+                <button class="palette-swatch" data-color="#f59e0b" style="background:#f59e0b;" title="Ámbar"></button>
+                <button class="palette-swatch" data-color="multi" style="background:linear-gradient(135deg, #06b6d4, #8b5cf6, #f43f5e);" title="Multicolor / Categórico"></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Display Area: Chart Stage & KPI Stats -->
+        <div class="chartgen-display-area" id="chartgen-display-area">
+          <!-- Collapsed summary bar (shown when controls are hidden) -->
+          <div class="chartgen-collapsed-bar" id="chartgen-collapsed-bar" style="display:none;">
+            <div class="chartgen-collapsed-info">
+              <span style="font-weight:600; color:var(--text-primary); font-size:12px;">📊 Vista de Gráfico:</span>
+              <span class="badge" id="chartgen-badge-x" style="background:rgba(6,182,212,0.18); color:var(--color-cyan); border:1px solid rgba(6,182,212,0.3); font-size:11px;">Eje X: -</span>
+              <span class="badge" id="chartgen-badge-y" style="background:rgba(16,185,129,0.18); color:var(--color-emerald); border:1px solid rgba(16,185,129,0.3); font-size:11px;">Eje Y: -</span>
+              <span class="badge" id="chartgen-badge-op" style="background:rgba(245,158,11,0.18); color:var(--color-amber); border:1px solid rgba(245,158,11,0.3); font-size:11px;">Op: -</span>
+              <span class="badge" id="chartgen-badge-type" style="background:rgba(139,92,246,0.18); color:var(--color-purple); border:1px solid rgba(139,92,246,0.3); font-size:11px;">Tipo: -</span>
+              <span class="badge" id="chartgen-badge-records" style="background:rgba(255,255,255,0.08); color:var(--text-secondary); font-size:11px;">Filas: -</span>
+            </div>
+            <button class="btn btn-sm btn-outline" id="btn-chartgen-show-controls" style="padding:4px 10px; font-size:11px;">
+              <span>⚙️</span> Mostrar Controles
+            </button>
+          </div>
+
+          <!-- Chart Stage Canvas -->
+          <div class="chartgen-canvas-container">
+            <canvas id="canvas-custom-chart"></canvas>
+            <div id="chartgen-no-data" style="display:none;" class="chartgen-empty-state">
+              <span>ℹ️</span> No hay datos para graficar con la configuración actual.
+            </div>
+          </div>
+
+          <!-- Quick KPI Stats Bar -->
+          <div class="chartgen-stats-bar">
+            <div class="chartgen-stat-card">
+              <span class="stat-label">Categorías / Puntos</span>
+              <strong class="stat-val" id="chartgen-stat-count">0</strong>
+            </div>
+            <div class="chartgen-stat-card">
+              <span class="stat-label">Suma Total</span>
+              <strong class="stat-val" id="chartgen-stat-sum">0</strong>
+            </div>
+            <div class="chartgen-stat-card">
+              <span class="stat-label">Media / Promedio</span>
+              <strong class="stat-val" id="chartgen-stat-avg">0</strong>
+            </div>
+            <div class="chartgen-stat-card">
+              <span class="stat-label">Pico Máximo</span>
+              <strong class="stat-val" id="chartgen-stat-max">0</strong>
+            </div>
+            <div class="chartgen-stat-card">
+              <span class="stat-label">Mínimo</span>
+              <strong class="stat-val" id="chartgen-stat-min">0</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="modal-footer" style="padding:14px 24px; border-top:1px solid var(--border-subtle); display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-size:12px; color:var(--text-muted);" id="chartgen-footer-info">
+          Gráfico interactivo generado en tiempo real
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn" id="btn-chartgen-copy-csv">
+            <span>📋</span> Copiar CSV
+          </button>
+          <button class="btn btn-primary" id="btn-chartgen-download-png">
+            <span>💾</span> Descargar Imagen PNG
+          </button>
+          <button class="btn" id="btn-modal-chartgen-close-footer">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Toast Notification for Scale / Font Changes -->
+  <div id="scale-toast" class="scale-toast" aria-live="polite">
+    <span id="scale-toast-icon">🔍</span>
+    <span id="scale-toast-text">Zoom: 100%</span>
+  </div>
+
+  <script src="app.js?v=12"></script>
+</body>
+</html>

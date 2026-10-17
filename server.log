@@ -1,0 +1,10 @@
+nohup: ignoring input
+127.0.0.1 - - [10/Oct/2026 12:39:56] "HEAD /styles.css?v=3 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Oct/2026 12:39:56] "HEAD /app.js?v=3 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Oct/2026 12:40:05] "POST /api/client_debug HTTP/1.1" 200 -
+127.0.0.1 - - [10/Oct/2026 12:40:57] "HEAD / HTTP/1.1" 200 -
+127.0.0.1 - - [10/Oct/2026 12:59:21] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [10/Oct/2026 12:59:21] "GET /styles.css?v=3 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Oct/2026 12:59:21] "GET /assets/chart.umd.min.js HTTP/1.1" 304 -
+127.0.0.1 - - [10/Oct/2026 12:59:21] "GET /app.js?v=3 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Oct/2026 12:59:21] "GET /data/cpview_data.json HTTP/1.1" 304 -
