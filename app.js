@@ -75,43 +75,90 @@ const PALETTE = {
   gray: '#64748b'
 };
 
+const COLOR_SWATCHES = [
+  { name: 'Cian', hex: '#06b6d4' },
+  { name: 'Azul', hex: '#3b82f6' },
+  { name: 'Esmeralda', hex: '#10b981' },
+  { name: 'Ámbar', hex: '#f59e0b' },
+  { name: 'Rosa', hex: '#f43f5e' },
+  { name: 'Púrpura', hex: '#8b5cf6' },
+  { name: 'Índigo', hex: '#6366f1' },
+  { name: 'Fucsia', hex: '#ec4899' },
+  { name: 'Gris', hex: '#64748b' }
+];
+
+const SERIES_DEFAULT_COLORS = [
+  '#06b6d4', '#3b82f6', '#10b981', '#f59e0b', '#f43f5e',
+  '#8b5cf6', '#6366f1', '#ec4899', '#64748b'
+];
+
+// Cache for chart datasets configurations
+const chartDatasetsCache = {};
+
 // Universal Chart Customization State
 const chartCustomState = {
   // Spikes
-  'chart-spikes-timeline': { type: 'bar', color: PALETTE.amber },
-  'chart-spikes-cores': { type: 'doughnut', color: PALETTE.cyan },
-  'chart-spikes-consumers': { type: 'bar', color: PALETTE.rose },
-  'chart-thread-consumers': { type: 'horizontalBar', color: PALETTE.purple },
+  'chart-spikes-timeline': { type: 'bar', color: PALETTE.amber, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
+  'chart-spikes-cores': { type: 'doughnut', color: PALETTE.cyan, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
+  'chart-spikes-consumers': { type: 'bar', color: PALETTE.rose, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
+  'chart-thread-consumers': { type: 'horizontalBar', color: PALETTE.purple, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
 
   // Flofiler
-  'chart-flofiler-protocols': { type: 'horizontalBar', color: PALETTE.cyan },
-  'chart-flofiler-components': { type: 'horizontalBar', color: PALETTE.purple },
+  'chart-flofiler-protocols': { type: 'horizontalBar', color: PALETTE.cyan, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
+  'chart-flofiler-components': { type: 'horizontalBar', color: PALETTE.purple, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
 
   // SecureXL & CoreXL
-  'chart-sxl-f2v': { type: 'horizontalBar', color: PALETTE.cyan },
-  'chart-multik-fails': { type: 'horizontalBar', color: PALETTE.rose },
-  'chart-ppak-hourly-timeline': { type: 'line', color: PALETTE.cyan },
+  'chart-sxl-f2v': { type: 'horizontalBar', color: PALETTE.cyan, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
+  'chart-multik-fails': { type: 'horizontalBar', color: PALETTE.rose, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
+  'chart-ppak-hourly-timeline': { type: 'line', color: PALETTE.cyan, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
 
   // Interfaces
-  'chart-top-interfaces': { type: 'bar', color: PALETTE.cyan },
+  'chart-top-interfaces': { type: 'bar', color: PALETTE.cyan, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
 
   // Overview
-  'chart-overview-traffic': { type: 'line', color: PALETTE.cyan },
-  'chart-overview-cpu-mem': { type: 'line', color: PALETTE.amber },
+  'chart-overview-traffic': { type: 'line', color: PALETTE.cyan, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
+  'chart-overview-cpu-mem': { type: 'line', color: PALETTE.amber, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
 
   // System
-  'chart-cpu-cores-timeline': { type: 'line', color: PALETTE.cyan },
+  'chart-cpu-cores-timeline': { type: 'line', color: PALETTE.cyan, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
 
   // Traffic
-  'chart-conns-timeline': { type: 'line', color: PALETTE.cyan },
-  'chart-conn-rate-timeline': { type: 'line', color: PALETTE.emerald },
+  'chart-conns-timeline': { type: 'line', color: PALETTE.cyan, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
+  'chart-conns-states': { type: 'line', color: PALETTE.emerald, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
+  'chart-conn-rate-timeline': { type: 'line', color: PALETTE.emerald, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
 
   // Drops
-  'chart-drops-hourly-timeline': { type: 'bar', color: PALETTE.rose },
+  'chart-drops-hourly-timeline': { type: 'bar', color: PALETTE.rose, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
 
   // Blades / VPN
-  'chart-vpn-timeline': { type: 'line', color: PALETTE.cyan },
+  'chart-vpn-timeline': { type: 'line', color: PALETTE.cyan, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
+
+  // Diagnostics Confluence
+  'chart-diagnostics-confluence': { type: 'line', color: PALETTE.rose, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} }
 };
+
+function loadChartCustomState() {
+  try {
+    const saved = localStorage.getItem('cpview_chart_custom_state_v2');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      Object.keys(parsed).forEach(k => {
+        if (!chartCustomState[k]) chartCustomState[k] = {};
+        Object.assign(chartCustomState[k], parsed[k]);
+      });
+    }
+  } catch (e) {
+    console.warn('Could not load chartCustomState from localStorage:', e);
+  }
+}
+
+function saveChartCustomState() {
+  try {
+    localStorage.setItem('cpview_chart_custom_state_v2', JSON.stringify(chartCustomState));
+  } catch (e) {
+    console.warn('Could not save chartCustomState to localStorage:', e);
+  }
+}
 
 // =============================================================================
 // Robust Universal Bar & Horizontal Bar Rendering Engine
@@ -239,7 +286,14 @@ function patchChartJsBarRenderer() {
         if (!chart || !chart.ctx) return;
         const isHoriz = Boolean(chart.options && chart.options.indexAxis === 'y');
         const token = chart._drawCycle;
-        (chart.data.datasets || []).forEach((dataset, dsIdx) => {
+        // Sort datasets so higher order (background) is drawn first, lower order (foreground) is drawn last (on top)
+        const sorted = (chart.data.datasets || []).map((ds, dsIdx) => ({
+          dataset: ds,
+          dsIdx,
+          order: Number(ds.order !== undefined ? ds.order : dsIdx)
+        })).sort((a, b) => b.order - a.order);
+
+        sorted.forEach(({ dataset, dsIdx }) => {
           const meta = chart.getDatasetMeta(dsIdx);
           if (!meta || meta.hidden || meta.type !== 'bar') return;
           const elements = meta.data || [];
@@ -270,32 +324,327 @@ function hexToRgba(hex, alpha = 1) {
 
 function getChartSetting(chartId, defaultType = 'line', defaultColor = PALETTE.cyan) {
   if (!chartCustomState[chartId]) {
-    chartCustomState[chartId] = { type: defaultType, color: defaultColor };
+    chartCustomState[chartId] = {
+      type: defaultType,
+      color: defaultColor,
+      foregroundIndex: 0,
+      activeSeriesIndex: 0,
+      datasetColors: { 0: defaultColor }
+    };
   }
-  return chartCustomState[chartId];
+  const st = chartCustomState[chartId];
+  if (st.type === undefined) st.type = defaultType;
+  if (st.color === undefined) st.color = defaultColor;
+  if (st.foregroundIndex === undefined) st.foregroundIndex = 0;
+  if (st.activeSeriesIndex === undefined) st.activeSeriesIndex = 0;
+  if (!st.datasetColors) {
+    st.datasetColors = {};
+    if (st.color) st.datasetColors[0] = st.color;
+  }
+  return st;
 }
 
 function syncChartControlsUI(chartId) {
   const ctrl = document.querySelector(`.chart-controls[data-chart="${chartId}"]`);
   if (!ctrl) return;
-  const st = chartCustomState[chartId];
-  if (!st) return;
+  const st = getChartSetting(chartId);
+  const datasets = chartDatasetsCache[chartId] || (currentCharts[chartId]?.data?.datasets) || [];
 
+  if (st.foregroundIndex === undefined || (datasets.length > 0 && st.foregroundIndex >= datasets.length)) {
+    st.foregroundIndex = 0;
+  }
+  if (st.activeSeriesIndex === undefined || (datasets.length > 0 && st.activeSeriesIndex >= datasets.length)) {
+    st.activeSeriesIndex = st.foregroundIndex;
+  }
+
+  const isMulti = datasets.length > 1;
+  const activeIdx = st.activeSeriesIndex;
+  const activeDs = datasets[activeIdx];
+  let curColor = st.datasetColors[activeIdx];
+  if (!curColor) {
+    curColor = (activeIdx === 0 && st.color) ? st.color : (activeDs?.borderColor || activeDs?.backgroundColor || SERIES_DEFAULT_COLORS[activeIdx % SERIES_DEFAULT_COLORS.length]);
+    st.datasetColors[activeIdx] = curColor;
+  }
+
+  // Type buttons HTML
+  const isDoughnutSupported = (chartId === 'chart-spikes-cores');
+  const typeButtonsHtml = `
+    <div class="filter-btn-group chart-type-group">
+      <button class="filter-btn ${st.type === 'line' ? 'active' : ''}" data-type="line" title="Gráfico de Líneas">📈 Línea</button>
+      <button class="filter-btn ${st.type === 'bar' ? 'active' : ''}" data-type="bar" title="Gráfico de Barras Verticales">📊 Barras</button>
+      <button class="filter-btn ${st.type === 'horizontalBar' ? 'active' : ''}" data-type="horizontalBar" title="Gráfico de Barras Horizontales">📋 Horiz</button>
+      ${isDoughnutSupported ? `<button class="filter-btn ${st.type === 'doughnut' ? 'active' : ''}" data-type="doughnut" title="Gráfico de Anillo">🍩 Anillo</button>` : ''}
+    </div>
+  `;
+
+  // Series selector and foreground controls HTML (if multi-dataset)
+  let seriesControlsHtml = '';
+  if (isMulti) {
+    const isFg = (activeIdx === st.foregroundIndex);
+    seriesControlsHtml = `
+      <div class="series-selector-group">
+        <label class="series-label" title="Muestra seleccionada para editar color o plano">Muestra:</label>
+        <select class="series-select" data-chart="${chartId}" title="Selecciona qué estadística o muestra deseas personalizar">
+          ${datasets.map((ds, idx) => {
+            const fgMark = (idx === st.foregroundIndex) ? '⭐ [1º Plano] ' : '';
+            return `<option value="${idx}" ${idx === activeIdx ? 'selected' : ''}>${fgMark}${ds.label || 'Muestra ' + (idx + 1)}</option>`;
+          }).join('')}
+        </select>
+      </div>
+      <button class="filter-btn btn-foreground ${isFg ? 'active' : ''}" data-chart="${chartId}" title="${isFg ? 'Esta muestra ya está en primer plano (al frente)' : 'Traer esta muestra al primer plano (al frente)'}">
+        <span class="fg-icon">${isFg ? '⭐' : '🔝'}</span>
+        <span class="fg-text">${isFg ? 'En Frente' : '1º Plano'}</span>
+      </button>
+      <button class="filter-btn btn-manage-series" data-chart="${chartId}" title="Gestionar todas las muestras, primer plano y colores en un panel">
+        <span>🎨 Todas (${datasets.length})</span>
+      </button>
+    `;
+  }
+
+  // Color picker HTML
+  const colorDotsHtml = COLOR_SWATCHES.map(sw => {
+    const isActive = curColor && curColor.toLowerCase() === sw.hex.toLowerCase();
+    return `<span class="color-dot ${isActive ? 'active' : ''}" data-chart="${chartId}" data-color="${sw.hex}" style="background:${sw.hex};" title="${sw.name} (${sw.hex})"></span>`;
+  }).join('');
+
+  const colorPickerHtml = `
+    <div class="color-picker-group">
+      ${colorDotsHtml}
+      <label class="color-picker-custom" title="Elegir cualquier color personalizado hex">
+        <input type="color" class="custom-color-input" data-chart="${chartId}" value="${curColor && curColor.startsWith('#') && curColor.length === 7 ? curColor : '#06b6d4'}">
+        <span>🎨</span>
+      </label>
+    </div>
+  `;
+
+  ctrl.innerHTML = `
+    ${chartId !== 'chart-diagnostics-confluence' ? typeButtonsHtml : ''}
+    ${seriesControlsHtml}
+    ${colorPickerHtml}
+  `;
+
+  // Attach event handlers
   ctrl.querySelectorAll('.chart-type-group .filter-btn').forEach(btn => {
-    if (btn.getAttribute('data-type') === st.type) {
-      btn.classList.add('active');
-    } else {
-      btn.classList.remove('active');
-    }
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const newType = btn.getAttribute('data-type');
+      st.type = newType;
+      saveChartCustomState();
+      triggerChartRefresh(chartId);
+    };
   });
+
+  const select = ctrl.querySelector('.series-select');
+  if (select) {
+    select.onchange = () => {
+      st.activeSeriesIndex = Number(select.value);
+      syncChartControlsUI(chartId);
+    };
+  }
+
+  const btnFg = ctrl.querySelector('.btn-foreground');
+  if (btnFg) {
+    btnFg.onclick = (e) => {
+      e.stopPropagation();
+      st.foregroundIndex = st.activeSeriesIndex;
+      saveChartCustomState();
+      triggerChartRefresh(chartId);
+    };
+  }
+
+  const btnManage = ctrl.querySelector('.btn-manage-series');
+  if (btnManage) {
+    btnManage.onclick = (e) => {
+      e.stopPropagation();
+      openSeriesManagerPopover(chartId, btnManage);
+    };
+  }
 
   ctrl.querySelectorAll('.color-picker-group .color-dot').forEach(dot => {
-    if (dot.getAttribute('data-color').toLowerCase() === st.color.toLowerCase()) {
-      dot.classList.add('active');
-    } else {
-      dot.classList.remove('active');
-    }
+    dot.onclick = (e) => {
+      e.stopPropagation();
+      const newColor = dot.getAttribute('data-color');
+      st.datasetColors[st.activeSeriesIndex] = newColor;
+      if (st.activeSeriesIndex === 0) st.color = newColor;
+      saveChartCustomState();
+      triggerChartRefresh(chartId);
+    };
   });
+
+  const customColorInput = ctrl.querySelector('.custom-color-input');
+  if (customColorInput) {
+    customColorInput.oninput = (e) => {
+      const newColor = e.target.value;
+      st.datasetColors[st.activeSeriesIndex] = newColor;
+      if (st.activeSeriesIndex === 0) st.color = newColor;
+      saveChartCustomState();
+      triggerChartRefresh(chartId);
+    };
+  }
+}
+
+function openSeriesManagerPopover(chartId, anchorBtn) {
+  const existing = document.getElementById(`series-popover-${chartId}`);
+  if (existing) {
+    closeSeriesManagerPopover();
+    return;
+  }
+
+  closeSeriesManagerPopover();
+
+  const st = getChartSetting(chartId);
+  const datasets = chartDatasetsCache[chartId] || (currentCharts[chartId]?.data?.datasets) || [];
+  if (datasets.length === 0) return;
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'series-popover-backdrop';
+  backdrop.id = 'series-popover-backdrop';
+  backdrop.onclick = closeSeriesManagerPopover;
+
+  const popover = document.createElement('div');
+  popover.className = 'series-manager-popover';
+  popover.id = `series-popover-${chartId}`;
+
+  function renderPopoverContent() {
+    popover.innerHTML = `
+      <div class="series-popover-header">
+        <div class="series-popover-title">
+          <span>🎨</span> Muestras y Estadísticas (${datasets.length})
+        </div>
+        <button class="btn-close-popover" title="Cerrar">&times;</button>
+      </div>
+      <div class="series-popover-subtitle">
+        Selecciona qué muestra/estadística está en <strong>primer plano</strong> y escoge el color de cada una:
+      </div>
+      <div class="series-popover-list">
+        ${datasets.map((ds, idx) => {
+          const isFg = (idx === st.foregroundIndex);
+          const dsColor = st.datasetColors[idx] || (idx === 0 ? st.color : (ds.borderColor || ds.backgroundColor || SERIES_DEFAULT_COLORS[idx % SERIES_DEFAULT_COLORS.length]));
+          return `
+            <div class="series-row ${isFg ? 'is-foreground' : ''}">
+              <div class="series-row-header">
+                <div class="series-row-name">
+                  <span class="series-color-preview" style="background:${dsColor};"></span>
+                  <strong>${ds.label || 'Muestra ' + (idx + 1)}</strong>
+                </div>
+                <label class="series-fg-radio-label" title="Poner esta muestra en primer plano (al frente)">
+                  <input type="radio" name="popover-fg-${chartId}" value="${idx}" ${isFg ? 'checked' : ''}>
+                  <span class="fg-radio-badge ${isFg ? 'active' : ''}">
+                    ${isFg ? '⭐ Primer Plano' : 'Poner al Frente'}
+                  </span>
+                </label>
+              </div>
+              <div class="series-row-colors">
+                ${COLOR_SWATCHES.map(sw => {
+                  const isActive = dsColor && dsColor.toLowerCase() === sw.hex.toLowerCase();
+                  return `<span class="color-dot ${isActive ? 'active' : ''}" data-ds="${idx}" data-color="${sw.hex}" style="background:${sw.hex};" title="${sw.name}"></span>`;
+                }).join('')}
+                <label class="color-picker-custom" title="Color personalizado hex">
+                  <input type="color" data-ds="${idx}" value="${dsColor && dsColor.startsWith('#') && dsColor.length === 7 ? dsColor : '#06b6d4'}">
+                  <span>🎨</span>
+                </label>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <div class="series-popover-footer">
+        <button class="btn-reset-chart-colors" title="Restaurar colores originales de este gráfico">
+          ↺ Restaurar colores
+        </button>
+        <button class="btn-done-popover">Listo</button>
+      </div>
+    `;
+
+    popover.querySelectorAll(`input[name="popover-fg-${chartId}"]`).forEach(radio => {
+      radio.onchange = () => {
+        const newFg = Number(radio.value);
+        st.foregroundIndex = newFg;
+        st.activeSeriesIndex = newFg;
+        saveChartCustomState();
+        triggerChartRefresh(chartId);
+        renderPopoverContent();
+      };
+    });
+
+    popover.querySelectorAll('.fg-radio-badge').forEach((badge, idx) => {
+      badge.onclick = (e) => {
+        e.preventDefault();
+        st.foregroundIndex = idx;
+        st.activeSeriesIndex = idx;
+        saveChartCustomState();
+        triggerChartRefresh(chartId);
+        renderPopoverContent();
+      };
+    });
+
+    popover.querySelectorAll('.series-row-colors .color-dot').forEach(dot => {
+      dot.onclick = (e) => {
+        e.stopPropagation();
+        const dsIdx = Number(dot.getAttribute('data-ds'));
+        const newColor = dot.getAttribute('data-color');
+        st.datasetColors[dsIdx] = newColor;
+        if (dsIdx === 0) st.color = newColor;
+        saveChartCustomState();
+        triggerChartRefresh(chartId);
+        renderPopoverContent();
+      };
+    });
+
+    popover.querySelectorAll('.series-row-colors input[type="color"]').forEach(input => {
+      input.oninput = (e) => {
+        const dsIdx = Number(input.getAttribute('data-ds'));
+        const newColor = e.target.value;
+        st.datasetColors[dsIdx] = newColor;
+        if (dsIdx === 0) st.color = newColor;
+        saveChartCustomState();
+        triggerChartRefresh(chartId);
+        renderPopoverContent();
+      };
+    });
+
+    const btnReset = popover.querySelector('.btn-reset-chart-colors');
+    if (btnReset) {
+      btnReset.onclick = (e) => {
+        e.stopPropagation();
+        st.datasetColors = {};
+        st.foregroundIndex = 0;
+        st.activeSeriesIndex = 0;
+        st.color = datasets[0]?.borderColor || datasets[0]?.backgroundColor || PALETTE.cyan;
+        saveChartCustomState();
+        triggerChartRefresh(chartId);
+        renderPopoverContent();
+      };
+    }
+
+    popover.querySelector('.btn-close-popover').onclick = closeSeriesManagerPopover;
+    popover.querySelector('.btn-done-popover').onclick = closeSeriesManagerPopover;
+  }
+
+  renderPopoverContent();
+  document.body.appendChild(backdrop);
+  document.body.appendChild(popover);
+
+  const rect = anchorBtn.getBoundingClientRect();
+  const popWidth = Math.min(440, window.innerWidth - 32);
+  let left = rect.right - popWidth;
+  if (left < 16) left = 16;
+  if (left + popWidth > window.innerWidth - 16) left = window.innerWidth - popWidth - 16;
+  popover.style.width = `${popWidth}px`;
+  popover.style.left = `${left}px`;
+  popover.style.top = `${Math.min(rect.bottom + 8, window.innerHeight - 480)}px`;
+
+  const escHandler = (e) => {
+    if (e.key === 'Escape') {
+      closeSeriesManagerPopover();
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
+}
+
+function closeSeriesManagerPopover() {
+  document.querySelectorAll('.series-manager-popover, .series-popover-backdrop').forEach(el => el.remove());
 }
 
 function triggerChartRefresh(chartId) {
@@ -317,6 +666,8 @@ function triggerChartRefresh(chartId) {
     renderDropsPage();
   } else if (chartId.startsWith('chart-vpn-')) {
     renderBladesPage();
+  } else if (chartId === 'chart-diagnostics-confluence') {
+    renderDiagnosticsConfluence();
   }
 }
 
@@ -324,73 +675,73 @@ function setupUniversalChartControls() {
   document.querySelectorAll('.chart-controls').forEach(ctrl => {
     const chartId = ctrl.getAttribute('data-chart');
     if (!chartId) return;
-
-    ctrl.querySelectorAll('.chart-type-group .filter-btn').forEach(btn => {
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        ctrl.querySelectorAll('.chart-type-group .filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const newType = btn.getAttribute('data-type');
-        const st = getChartSetting(chartId);
-        st.type = newType;
-        triggerChartRefresh(chartId);
-      };
-    });
-
-    ctrl.querySelectorAll('.color-picker-group .color-dot').forEach(dot => {
-      dot.onclick = (e) => {
-        e.stopPropagation();
-        ctrl.querySelectorAll('.color-picker-group .color-dot').forEach(d => d.classList.remove('active'));
-        dot.classList.add('active');
-        const newColor = dot.getAttribute('data-color');
-        const st = getChartSetting(chartId);
-        st.color = newColor;
-        triggerChartRefresh(chartId);
-      };
-    });
+    syncChartControlsUI(chartId);
   });
 }
 
 function renderUniversalChart(canvasId, config) {
   patchChartJsBarRenderer();
 
+  // Cache datasets configuration
+  chartDatasetsCache[canvasId] = config.datasets;
+
   const setting = getChartSetting(canvasId, config.defaultType || 'line', config.defaultColor || PALETTE.cyan);
   const userType = setting.type || 'line';
-  const userColor = setting.color || PALETTE.cyan;
 
   const isHoriz = userType === 'horizontalBar';
   const chartType = isHoriz ? 'bar' : userType; // 'line' or 'bar'
 
+  const fgIdx = Math.min(Math.max(setting.foregroundIndex ?? 0, 0), Math.max(config.datasets.length - 1, 0));
+
   const processedDatasets = config.datasets.map((ds, idx) => {
-    const color = (idx === 0) ? userColor : (ds.borderColor || ds.backgroundColor || PALETTE.purple);
+    let color = setting.datasetColors[idx];
+    if (!color) {
+      color = (idx === 0 && setting.color) ? setting.color : (ds.borderColor || ds.backgroundColor || SERIES_DEFAULT_COLORS[idx % SERIES_DEFAULT_COLORS.length]);
+      setting.datasetColors[idx] = color;
+    }
+    if (idx === 0) setting.color = color;
+
+    const isForeground = (idx === fgIdx);
+    const order = isForeground ? 1 : (10 + idx);
+
     if (chartType === 'line') {
+      const isMulti = config.datasets.length > 1;
+      const fillVal = ds.fill !== undefined ? ds.fill : (isMulti ? (isForeground ? true : false) : true);
+      const fillAlpha = isForeground ? 0.22 : 0.08;
+
       return {
+        ...ds,
         label: ds.label || 'Valor',
         data: ds.data,
         borderColor: color,
-        backgroundColor: ds.backgroundColor || hexToRgba(color, 0.22),
-        fill: ds.fill !== undefined ? ds.fill : true,
+        backgroundColor: ds.backgroundColor && typeof ds.backgroundColor === 'string' && ds.backgroundColor.startsWith('rgba') && !setting.datasetColors[idx]
+          ? ds.backgroundColor
+          : hexToRgba(color, fillAlpha),
+        fill: fillVal,
         borderDash: ds.borderDash,
-        tension: 0.3,
-        pointRadius: 3.5,
-        pointHoverRadius: 6,
+        tension: ds.tension !== undefined ? ds.tension : 0.3,
+        pointRadius: isForeground ? (ds.pointRadius !== undefined && ds.pointRadius === 0 ? 2 : 4) : (ds.pointRadius !== undefined ? ds.pointRadius : 2.5),
+        pointHoverRadius: isForeground ? 7 : 5,
         pointBackgroundColor: color,
         pointBorderColor: '#ffffff',
-        pointBorderWidth: 1.5,
-        borderWidth: 2.5,
+        pointBorderWidth: isForeground ? 2 : 1,
+        borderWidth: isForeground ? 3.0 : (ds.borderWidth || 1.8),
+        order: order,
         yAxisID: isHoriz ? undefined : ds.yAxisID
       };
     } else {
       return {
+        ...ds,
         label: ds.label || 'Valor',
         data: ds.data,
-        backgroundColor: hexToRgba(color, 0.85),
+        backgroundColor: hexToRgba(color, isForeground ? 0.92 : 0.65),
         borderColor: color,
-        borderWidth: 1.5,
+        borderWidth: isForeground ? 2.5 : 1.2,
         borderRadius: 4,
         barPercentage: 0.75,
         categoryPercentage: 0.82,
         inflateAmount: 0,
+        order: order,
         yAxisID: isHoriz ? undefined : ds.yAxisID
       };
     }
@@ -441,9 +792,47 @@ function renderUniversalChart(canvasId, config) {
       legend: {
         display: config.datasets.length > 1,
         position: 'top',
-        labels: { boxWidth: 12, color: '#94a3b8' }
+        labels: {
+          boxWidth: 12,
+          color: '#94a3b8',
+          generateLabels: function(chart) {
+            const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+            if (chart.data.datasets.length > 1) {
+              original.forEach(item => {
+                if (item.datasetIndex === fgIdx) {
+                  item.text = '⭐ ' + item.text + ' (Frente)';
+                }
+              });
+            }
+            return original;
+          }
+        },
+        onClick: function(e, legendItem, legend) {
+          const dsIdx = legendItem.datasetIndex;
+          if (e.native && (e.native.altKey || e.native.shiftKey || e.native.ctrlKey || e.native.metaKey)) {
+            setting.foregroundIndex = dsIdx;
+            setting.activeSeriesIndex = dsIdx;
+            saveChartCustomState();
+            triggerChartRefresh(canvasId);
+            return;
+          }
+          setting.activeSeriesIndex = dsIdx;
+          syncChartControlsUI(canvasId);
+          Chart.defaults.plugins.legend.onClick.call(this, e, legendItem, legend);
+        }
       },
-      tooltip: { enabled: true }
+      tooltip: {
+        enabled: true,
+        callbacks: {
+          label: function(ctx) {
+            const isFg = (ctx.datasetIndex === fgIdx);
+            const prefix = isFg && ctx.chart.data.datasets.length > 1 ? '⭐ [1º Plano] ' : '';
+            const label = ctx.dataset.label || '';
+            const rawVal = ctx.parsed.y !== undefined ? ctx.parsed.y : ctx.parsed.x;
+            return `${prefix}${label}: ${fmtNum(rawVal)}`;
+          }
+        }
+      }
     },
     scales: scales
   };
@@ -956,6 +1345,7 @@ if (window.Chart) {
 
 // Initialize Application
 document.addEventListener('DOMContentLoaded', async () => {
+  loadChartCustomState();
   setupNavigation();
   setupEventListeners();
   setupThemeSystem();
@@ -1396,65 +1786,94 @@ function renderDiagnosticsChart() {
     return dr ? Math.round((dr.total || 0) / 1000) : 0; // k drops/h
   });
 
+  const baseDatasets = [
+    {
+      label: 'CPU Core 1 Max (%)',
+      data: core1Data,
+      borderColor: '#f43f5e',
+      backgroundColor: 'rgba(244, 63, 94, 0.1)',
+      fill: false,
+      tension: 0.2,
+      borderWidth: 2,
+      pointRadius: sliceData.length > 100 ? 0 : 2,
+      yAxisID: 'y'
+    },
+    {
+      label: 'CPU Promedio Total (%)',
+      data: cpuTotData,
+      borderColor: '#38bdf8',
+      borderDash: [4, 4],
+      fill: false,
+      tension: 0.2,
+      borderWidth: 1.5,
+      pointRadius: 0,
+      yAxisID: 'y'
+    },
+    {
+      label: 'Tráfico Pico (Gbps)',
+      data: trafData,
+      borderColor: '#06b6d4',
+      fill: false,
+      tension: 0.2,
+      borderWidth: 1.5,
+      pointRadius: 0,
+      yAxisID: 'y1'
+    },
+    {
+      label: 'Nuevas Conexiones (k c/s)',
+      data: connRateData,
+      borderColor: '#c084fc',
+      fill: false,
+      tension: 0.2,
+      borderWidth: 1.5,
+      pointRadius: 0,
+      yAxisID: 'y1'
+    },
+    {
+      label: 'Descartes Totales (k drops/h)',
+      data: dropsData,
+      borderColor: '#fbbf24',
+      backgroundColor: 'rgba(245, 158, 11, 0.08)',
+      fill: true,
+      tension: 0.2,
+      borderWidth: 1.5,
+      pointRadius: 0,
+      yAxisID: 'y1'
+    }
+  ];
+
+  chartDatasetsCache['chart-diagnostics-confluence'] = baseDatasets;
+  const st = getChartSetting('chart-diagnostics-confluence', 'line', PALETTE.rose);
+  const fgIdx = Math.min(Math.max(st.foregroundIndex ?? 0, 0), baseDatasets.length - 1);
+
+  const processedDatasets = baseDatasets.map((ds, idx) => {
+    let color = st.datasetColors[idx];
+    if (!color) {
+      color = (idx === 0 && st.color) ? st.color : (ds.borderColor || ds.backgroundColor || SERIES_DEFAULT_COLORS[idx % SERIES_DEFAULT_COLORS.length]);
+      st.datasetColors[idx] = color;
+    }
+    if (idx === 0) st.color = color;
+
+    const isForeground = (idx === fgIdx);
+    const order = isForeground ? 1 : (10 + idx);
+
+    return {
+      ...ds,
+      borderColor: color,
+      backgroundColor: ds.fill ? hexToRgba(color, isForeground ? 0.22 : 0.08) : undefined,
+      borderWidth: isForeground ? 3.0 : (ds.borderWidth || 1.5),
+      pointRadius: isForeground ? (sliceData.length > 100 ? 1.5 : 3.5) : (sliceData.length > 100 ? 0 : 1.5),
+      pointHoverRadius: isForeground ? 7 : 5,
+      pointBackgroundColor: color,
+      order: order
+    };
+  });
+
   const chartConfig = {
     type: 'line',
     data: {
       labels,
-      datasets: [
-        {
-          label: 'CPU Core 1 Max (%)',
-          data: core1Data,
-          borderColor: '#f43f5e',
-          backgroundColor: 'rgba(244, 63, 94, 0.1)',
-          fill: false,
-          tension: 0.2,
-          borderWidth: 2,
-          pointRadius: sliceData.length > 100 ? 0 : 2,
-          yAxisID: 'y'
-        },
-        {
-          label: 'CPU Promedio Total (%)',
-          data: cpuTotData,
-          borderColor: '#38bdf8',
-          borderDash: [4, 4],
-          fill: false,
-          tension: 0.2,
-          borderWidth: 1.5,
-          pointRadius: 0,
-          yAxisID: 'y'
-        },
-        {
-          label: 'Tráfico Pico (Gbps)',
-          data: trafData,
-          borderColor: '#06b6d4',
-          fill: false,
-          tension: 0.2,
-          borderWidth: 1.5,
-          pointRadius: 0,
-          yAxisID: 'y1'
-        },
-        {
-          label: 'Nuevas Conexiones (k c/s)',
-          data: connRateData,
-          borderColor: '#c084fc',
-          fill: false,
-          tension: 0.2,
-          borderWidth: 1.5,
-          pointRadius: 0,
-          yAxisID: 'y1'
-        },
-        {
-          label: 'Descartes Totales (k drops/h)',
-          data: dropsData,
-          borderColor: '#fbbf24',
-          backgroundColor: 'rgba(245, 158, 11, 0.08)',
-          fill: true,
-          tension: 0.2,
-          borderWidth: 1.5,
-          pointRadius: 0,
-          yAxisID: 'y1'
-        }
-      ]
+      datasets: processedDatasets
     },
     options: {
       responsive: true,
@@ -1482,18 +1901,45 @@ function renderDiagnosticsChart() {
       plugins: {
         legend: {
           position: 'top',
-          labels: { boxWidth: 12, padding: 12 }
+          labels: {
+            boxWidth: 12,
+            padding: 12,
+            generateLabels: function(chart) {
+              const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+              original.forEach(item => {
+                if (item.datasetIndex === fgIdx) {
+                  item.text = '⭐ ' + item.text + ' (Frente)';
+                }
+              });
+              return original;
+            }
+          },
+          onClick: function(e, legendItem, legend) {
+            const dsIdx = legendItem.datasetIndex;
+            if (e.native && (e.native.altKey || e.native.shiftKey || e.native.ctrlKey || e.native.metaKey)) {
+              st.foregroundIndex = dsIdx;
+              st.activeSeriesIndex = dsIdx;
+              saveChartCustomState();
+              triggerChartRefresh('chart-diagnostics-confluence');
+              return;
+            }
+            st.activeSeriesIndex = dsIdx;
+            syncChartControlsUI('chart-diagnostics-confluence');
+            Chart.defaults.plugins.legend.onClick.call(this, e, legendItem, legend);
+          }
         },
         tooltip: {
           callbacks: {
             label: function(ctx) {
+              const isFg = (ctx.datasetIndex === fgIdx);
+              const prefix = isFg ? '⭐ [1º Plano] ' : '';
               const label = ctx.dataset.label || '';
               const val = ctx.parsed.y;
-              if (label.includes('CPU')) return `${label}: ${val}%`;
-              if (label.includes('Tráfico')) return `${label}: ${val} Gbps`;
-              if (label.includes('Conexiones')) return `${label}: ${val}k conns/sec`;
-              if (label.includes('Descartes')) return `${label}: ${val}k drops/hora`;
-              return `${label}: ${val}`;
+              if (label.includes('CPU')) return `${prefix}${label}: ${val}%`;
+              if (label.includes('Tráfico')) return `${prefix}${label}: ${val} Gbps`;
+              if (label.includes('Conexiones')) return `${prefix}${label}: ${val}k conns/sec`;
+              if (label.includes('Descartes')) return `${prefix}${label}: ${val}k drops/hora`;
+              return `${prefix}${label}: ${val}`;
             }
           }
         }
@@ -1502,6 +1948,7 @@ function renderDiagnosticsChart() {
   };
 
   createOrUpdateChart('chart-diagnostics-confluence', chartConfig);
+  syncChartControlsUI('chart-diagnostics-confluence');
 }
 
 function renderDiagnosticsHeatmap(heatmap) {
@@ -2066,23 +2513,16 @@ function renderTrafficPage() {
     defaultColor: PALETTE.cyan
   });
 
-  createOrUpdateChart('chart-conns-states', {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [
-        { label: 'TCP Establecidas', data: conns.map(c => c.fw_established), borderColor: PALETTE.emerald, tension: 0.2, pointRadius: 0 },
-        { label: 'TCP Handshake', data: conns.map(c => c.fw_handshake), borderColor: PALETTE.amber, tension: 0.2, pointRadius: 0 },
-        { label: 'No-TCP / UDP', data: conns.map(c => c.fw_non_tcp), borderColor: PALETTE.purple, tension: 0.2, pointRadius: 0 }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        y: { title: { display: true, text: 'Conexiones por Estado' } }
-      }
-    }
+  renderUniversalChart('chart-conns-states', {
+    labels: labels,
+    datasets: [
+      { label: 'TCP Establecidas', data: conns.map(c => c.fw_established), borderColor: PALETTE.emerald, backgroundColor: PALETTE.emerald },
+      { label: 'TCP Handshake', data: conns.map(c => c.fw_handshake), borderColor: PALETTE.amber, backgroundColor: PALETTE.amber },
+      { label: 'No-TCP / UDP', data: conns.map(c => c.fw_non_tcp), borderColor: PALETTE.purple, backgroundColor: PALETTE.purple }
+    ],
+    yTitle: 'Conexiones por Estado',
+    defaultType: 'line',
+    defaultColor: PALETTE.emerald
   });
 
   const traffic = CP_DATA.traffic.hourly;
