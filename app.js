@@ -1000,6 +1000,12 @@ function setupThemeSystem() {
       if (scaleMenu) scaleMenu.style.display = 'none';
       if (scaleBtn) scaleBtn.setAttribute('aria-expanded', 'false');
 
+      // Close lang menu if open
+      const langMenu = document.getElementById('lang-dropdown-menu');
+      const langBtn = document.getElementById('btn-lang-selector');
+      if (langMenu) langMenu.style.display = 'none';
+      if (langBtn) langBtn.setAttribute('aria-expanded', 'false');
+
       menu.style.display = isVisible ? 'none' : 'flex';
       btn.setAttribute('aria-expanded', !isVisible);
     });
@@ -1206,6 +1212,12 @@ function setupScalingSystem() {
       if (themeMenu) themeMenu.style.display = 'none';
       if (themeBtn) themeBtn.setAttribute('aria-expanded', 'false');
 
+      // Close lang menu if open
+      const langMenu = document.getElementById('lang-dropdown-menu');
+      const langBtn = document.getElementById('btn-lang-selector');
+      if (langMenu) langMenu.style.display = 'none';
+      if (langBtn) langBtn.setAttribute('aria-expanded', 'false');
+
       menu.style.display = isVisible ? 'none' : 'flex';
       btn.setAttribute('aria-expanded', !isVisible);
     });
@@ -1350,6 +1362,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   setupThemeSystem();
   setupScalingSystem();
+
+  // Initialize and connect i18n dynamic reactive listener
+  if (window.i18n) {
+    if (typeof window.i18n.setupLanguageSystem === 'function') {
+      window.i18n.setupLanguageSystem();
+    }
+    window.i18n.onLanguageChange((newLang) => {
+      // Invalidate cached analysis so diagnoses and remediations refresh in current language
+      if (typeof diagnosticsState !== 'undefined') {
+        diagnosticsState.cachedAnalysis = null;
+      }
+      populateUI();
+      if (typeof activePage !== 'undefined') {
+        switchPage(activePage, false);
+      }
+    });
+  }
+
   await loadData();
 });
 
@@ -1457,8 +1487,12 @@ function switchPage(pageId, updateHash = true) {
     db_explorer: '<span>🗄️</span> Explorador de Tablas y Consultas SQLite'
   };
   const titleEl = document.getElementById('current-page-title');
-  if (titleEl && titles[pageId]) {
-    titleEl.innerHTML = titles[pageId];
+  if (titleEl) {
+    if (window.i18n && window.i18n.t(`title.${pageId}`)) {
+      titleEl.innerHTML = window.i18n.t(`title.${pageId}`);
+    } else if (titles[pageId]) {
+      titleEl.innerHTML = titles[pageId];
+    }
   }
 
   // Wait a frame for browser layout and CSS animation initiation
@@ -1471,8 +1505,14 @@ function switchPage(pageId, updateHash = true) {
 function populateUI() {
   if (!CP_DATA) return;
   const sys = CP_DATA.system;
+  const daysSuffix = window.i18n ? window.i18n.t('header.days_suffix', 'días') : 'días';
+  const tablesSuffix = window.i18n ? window.i18n.t('sidebar.badge_tables_suffix', 'Tablas') : 'Tablas';
 
-  document.getElementById('hdr-uptime').textContent = sys.latest_uptime || '119 días';
+  let uptimeStr = sys.latest_uptime || `119 ${daysSuffix}`;
+  if (uptimeStr) {
+    uptimeStr = uptimeStr.replace(/\b(días|days|dias)\b/gi, daysSuffix);
+  }
+  document.getElementById('hdr-uptime').textContent = uptimeStr;
   document.getElementById('hdr-cluster').textContent = sys.cluster_status || 'VSX Standalone';
   if (document.getElementById('hdr-node-name')) {
     document.getElementById('hdr-node-name').textContent = sys.node_name || 'Nodo Check Point';
@@ -1482,14 +1522,14 @@ function populateUI() {
     brandP.textContent = sys.node_name || sys.db_filename || 'SG_FWNET-ch01-01';
   }
   document.getElementById('hdr-timerange').textContent = 
-    `${sys.start_iso.substring(0, 10)} — ${sys.end_iso.substring(0, 10)} (${sys.duration_days} días)`;
+    `${sys.start_iso.substring(0, 10)} — ${sys.end_iso.substring(0, 10)} (${sys.duration_days} ${daysSuffix})`;
 
   // Badges
   document.getElementById('badge-cores').textContent = `${sys.cores_count} Cores`;
   document.getElementById('badge-ifs').textContent = `${CP_DATA.interfaces.length} IFs`;
   document.getElementById('badge-drops').textContent = `${(CP_DATA.drops.total / 1e6).toFixed(1)}M`;
   document.getElementById('badge-spikes').textContent = `${(CP_DATA.spikes.cpu_spikes.length / 1000).toFixed(1)}k`;
-  document.getElementById('badge-tables').textContent = `${CP_DATA.table_catalog.length} Tablas`;
+  document.getElementById('badge-tables').textContent = `${CP_DATA.table_catalog.length} ${tablesSuffix}`;
   document.getElementById('badge-conns').textContent = '400k';
 
   // KPI Overview
@@ -1671,17 +1711,17 @@ function computeDiagnosticsAndConfluence(data) {
       let cause = '';
       let remediation = '';
       if (signals.some(s => s.type === 'cpu') && signals.some(s => s.type === 'conns')) {
-        cause = 'Confluencia crítica: saturación de CoreXL Worker 1 provocada por ráfaga masiva de apertura de conexiones TCP en camino lento.';
-        remediation = 'Activar Dynamic Dispatcher (fw ctl multik dynamic_disp on) y Accelerated SYN Defense (fw ctl set int sim_syn_defense 1).';
+        cause = window.i18n ? window.i18n.t('diag.cause_cpu_conns', 'Confluencia crítica: saturación de CoreXL Worker 1 provocada por ráfaga masiva de apertura de conexiones TCP en camino lento.') : 'Confluencia crítica: saturación de CoreXL Worker 1 provocada por ráfaga masiva de apertura de conexiones TCP en camino lento.';
+        remediation = window.i18n ? window.i18n.t('diag.remedy_cpu_conns', 'Activar Dynamic Dispatcher (fw ctl multik dynamic_disp on) y Accelerated SYN Defense (fw ctl set int sim_syn_defense 1).') : 'Activar Dynamic Dispatcher (fw ctl multik dynamic_disp on) y Accelerated SYN Defense (fw ctl set int sim_syn_defense 1).';
       } else if (signals.some(s => s.type === 'drops') && signals.some(s => s.type === 'traffic')) {
-        cause = 'Confluencia de alto throughput con ráfagas de descarte en Rulebase o Anti-Spoofing PPAK. Sobrecarga en pipeline de inspección.';
-        remediation = 'Habilitar Drop Templates en SecureXL (fw accel drop_templates on) y revisar grupos de topología de interfaz.';
+        cause = window.i18n ? window.i18n.t('diag.cause_drops_traffic', 'Confluencia de alto throughput con ráfagas de descarte en Rulebase o Anti-Spoofing PPAK. Sobrecarga en pipeline de inspección.') : 'Confluencia de alto throughput con ráfagas de descarte en Rulebase o Anti-Spoofing PPAK. Sobrecarga en pipeline de inspección.';
+        remediation = window.i18n ? window.i18n.t('diag.remedy_drops_traffic', 'Habilitar Drop Templates en SecureXL (fw accel drop_templates on) y revisar grupos de topología de interfaz.') : 'Habilitar Drop Templates en SecureXL (fw accel drop_templates on) y revisar grupos de topología de interfaz.';
       } else if (isMidnight) {
-        cause = 'Degradación cíclica nocturna por tareas batch en crontab, volcados de CPView y rotación de logs a las 00:00 UTC.';
-        remediation = 'Escalonar los cron jobs de medianoche en crontab (rotación a 01:15, backups a 02:30, compresión a 03:45).';
+        cause = window.i18n ? window.i18n.t('diag.cause_midnight', 'Degradación cíclica nocturna por tareas batch en crontab, volcados de CPView y rotación de logs a las 00:00 UTC.') : 'Degradación cíclica nocturna por tareas batch en crontab, volcados de CPView y rotación de logs a las 00:00 UTC.';
+        remediation = window.i18n ? window.i18n.t('diag.remedy_midnight', 'Escalonar los cron jobs de medianoche en crontab (rotación a 01:15, backups a 02:30, compresión a 03:45).') : 'Escalonar los cron jobs de medianoche en crontab (rotación a 01:15, backups a 02:30, compresión a 03:45).';
       } else {
-        cause = 'Anomalía puntual multivariable que genera contención temporal de recursos de kernel y buffers de red.';
-        remediation = 'Verificar sim affinity -a y ampliar buffers de encolamiento de SecureXL (sim_dispatcher_queue_size 4096).';
+        cause = window.i18n ? window.i18n.t('diag.cause_multivar', 'Anomalía puntual multivariable que genera contención temporal de recursos de kernel y buffers de red.') : 'Anomalía puntual multivariable que genera contención temporal de recursos de kernel y buffers de red.';
+        remediation = window.i18n ? window.i18n.t('diag.remedy_multivar', 'Verificar sim affinity -a y ampliar buffers de encolamiento de SecureXL (sim_dispatcher_queue_size 4096).') : 'Verificar sim affinity -a y ampliar buffers de encolamiento de SecureXL (sim_dispatcher_queue_size 4096).';
       }
 
       incidents.push({
@@ -1955,7 +1995,15 @@ function renderDiagnosticsHeatmap(heatmap) {
   const table = document.getElementById('diag-heatmap-table');
   if (!table || !heatmap) return;
 
-  const dayNames = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  const dayNames = [
+    window.i18n ? window.i18n.t('common.day_mon', 'Lunes') : 'Lunes',
+    window.i18n ? window.i18n.t('common.day_tue', 'Martes') : 'Martes',
+    window.i18n ? window.i18n.t('common.day_wed', 'Miércoles') : 'Miércoles',
+    window.i18n ? window.i18n.t('common.day_thu', 'Jueves') : 'Jueves',
+    window.i18n ? window.i18n.t('common.day_fri', 'Viernes') : 'Viernes',
+    window.i18n ? window.i18n.t('common.day_sat', 'Sábado') : 'Sábado',
+    window.i18n ? window.i18n.t('common.day_sun', 'Domingo') : 'Domingo'
+  ];
 
   let html = '<thead><tr><th style="width:80px;">Día</th>';
   for (let h = 0; h < 24; h++) {
@@ -1976,7 +2024,7 @@ function renderDiagnosticsHeatmap(heatmap) {
       else if (pct > 0) level = 1;
 
       const isSelected = (diagnosticsState.dayFilter === d && diagnosticsState.hourFilter === h);
-      const title = `${dayNames[d]} a las ${String(h).padStart(2, '0')}:00 UTC: ${cellData.high}/${cellData.total} días con carga alta (Core 1 ≥ 75%). ${cellData.crit} incidentes críticos. (Clic para filtrar incidentes)`;
+      const title = `${dayNames[d]} a las ${String(h).padStart(2, '0')}:00 UTC: ${cellData.high}/${cellData.total} (Core 1 ≥ 75%). ${cellData.crit} CRIT.`;
       html += `<td class="heatmap-cell level-${level} ${isSelected ? 'active-filter' : ''}" title="${title}" data-day="${d}" data-hour="${h}">${pct.toFixed(0)}%</td>`;
     }
     html += '</tr>';
@@ -2011,7 +2059,15 @@ function renderDiagnosticsIncidentsTable() {
   const analysis = computeDiagnosticsAndConfluence(CP_DATA);
   if (!analysis) return;
 
-  const dayNames = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  const dayNames = [
+    window.i18n ? window.i18n.t('common.day_mon', 'Lunes') : 'Lunes',
+    window.i18n ? window.i18n.t('common.day_tue', 'Martes') : 'Martes',
+    window.i18n ? window.i18n.t('common.day_wed', 'Miércoles') : 'Miércoles',
+    window.i18n ? window.i18n.t('common.day_thu', 'Jueves') : 'Jueves',
+    window.i18n ? window.i18n.t('common.day_fri', 'Viernes') : 'Viernes',
+    window.i18n ? window.i18n.t('common.day_sat', 'Sábado') : 'Sábado',
+    window.i18n ? window.i18n.t('common.day_sun', 'Domingo') : 'Domingo'
+  ];
   const search = diagnosticsState.search.toLowerCase().trim();
   const sevFilter = diagnosticsState.severity;
   const natFilter = diagnosticsState.nature;
@@ -2034,9 +2090,12 @@ function renderDiagnosticsIncidentsTable() {
   if (countBadge) {
     let filterTag = '';
     if (diagnosticsState.dayFilter !== 'all') {
-      filterTag = ` | Filtrado: ${dayNames[diagnosticsState.dayFilter]} ${String(diagnosticsState.hourFilter).padStart(2,'0')}h <button class="btn btn-sm btn-outline" style="padding:1px 6px; font-size:10px; margin-left:6px;" onclick="resetDiagnosticsHeatmapFilter()">✕ Limpiar</button>`;
+      const resetText = window.i18n ? window.i18n.t('diag.btn_reset_filter', '✕ Limpiar') : '✕ Limpiar';
+      const filterLabel = window.i18n ? window.i18n.t('diag.filter_tag', `Filtrado: ${dayNames[diagnosticsState.dayFilter]} ${String(diagnosticsState.hourFilter).padStart(2,'0')}h`, { day: dayNames[diagnosticsState.dayFilter], hour: String(diagnosticsState.hourFilter).padStart(2,'0') }) : `Filtrado: ${dayNames[diagnosticsState.dayFilter]} ${String(diagnosticsState.hourFilter).padStart(2,'0')}h`;
+      filterTag = ` | ${filterLabel} <button class="btn btn-sm btn-outline" style="padding:1px 6px; font-size:10px; margin-left:6px;" onclick="resetDiagnosticsHeatmapFilter()">${resetText}</button>`;
     }
-    countBadge.innerHTML = `${filtered.length} incidentes filtrados (de ${analysis.totalIncidents})${filterTag}`;
+    const filteredText = window.i18n ? window.i18n.t('diag.incidents_filtered', `${filtered.length} incidentes filtrados (de ${analysis.totalIncidents})`, { count: filtered.length, total: analysis.totalIncidents }) : `${filtered.length} incidentes filtrados (de ${analysis.totalIncidents})`;
+    countBadge.innerHTML = `${filteredText}${filterTag}`;
   }
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / diagnosticsState.pageSize));
@@ -2047,7 +2106,9 @@ function renderDiagnosticsIncidentsTable() {
   if (pageInfo) {
     const startIdx = (diagnosticsState.page - 1) * diagnosticsState.pageSize + 1;
     const endIdx = Math.min(filtered.length, diagnosticsState.page * diagnosticsState.pageSize);
-    pageInfo.textContent = filtered.length > 0 ? `Mostrando ${startIdx} - ${endIdx} de ${filtered.length} incidentes (Pág. ${diagnosticsState.page} de ${totalPages})` : 'No hay incidentes que coincidan con los filtros';
+    const noIncidentsText = window.i18n ? window.i18n.t('diag.no_incidents_match', 'No hay incidentes que coincidan con los filtros') : 'No hay incidentes que coincidan con los filtros';
+    const paginationText = window.i18n ? window.i18n.t('diag.showing_pagination', `Mostrando ${startIdx} - ${endIdx} de ${filtered.length} incidentes (Pág. ${diagnosticsState.page} de ${totalPages})`, { start: startIdx, end: endIdx, total: filtered.length, page: diagnosticsState.page, totalPages: totalPages }) : `Mostrando ${startIdx} - ${endIdx} de ${filtered.length} incidentes (Pág. ${diagnosticsState.page} de ${totalPages})`;
+    pageInfo.textContent = filtered.length > 0 ? paginationText : noIncidentsText;
   }
 
   const prevBtn = document.getElementById('btn-diag-prev');
@@ -2059,7 +2120,8 @@ function renderDiagnosticsIncidentsTable() {
   const paged = filtered.slice(start, start + diagnosticsState.pageSize);
 
   if (paged.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:32px; color:var(--text-muted);">No se encontraron incidentes para los criterios seleccionados.</td></tr>`;
+    const emptyMsg = window.i18n ? window.i18n.t('diag.no_incidents_found', 'No se encontraron incidentes para los criterios seleccionados.') : 'No se encontraron incidentes para los criterios seleccionados.';
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:32px; color:var(--text-muted);">${emptyMsg}</td></tr>`;
     return;
   }
 
@@ -2067,9 +2129,17 @@ function renderDiagnosticsIncidentsTable() {
   paged.forEach((inc) => {
     const isExpanded = diagnosticsState.expandedIndex === inc.id;
     const sevBadgeClass = inc.severity === 'CRÍTICO' ? 'crit' : (inc.severity === 'ALTO' ? 'high' : 'med');
+    
+    let sevBadgeText = inc.severity;
+    if (window.i18n) {
+      if (inc.severity === 'CRÍTICO') sevBadgeText = window.i18n.t('diag.badge_critical', 'Crítico').toUpperCase();
+      else if (inc.severity === 'ALTO') sevBadgeText = window.i18n.t('diag.badge_high', 'Alto').toUpperCase();
+      else if (inc.severity === 'MEDIO') sevBadgeText = window.i18n.t('spikes.severity_moderate', 'Medio').toUpperCase();
+    }
+
     const natBadge = inc.nature === 'Recurrente'
-      ? `<span class="confluence-chip recurrent">🔁 Recurrente</span>`
-      : `<span class="confluence-chip" style="background:rgba(255,255,255,0.08); color:var(--text-muted);">⚡ Puntual</span>`;
+      ? `<span class="confluence-chip recurrent">${window.i18n ? window.i18n.t('diag.badge_recurrent', '🔁 Recurrente') : '🔁 Recurrente'}</span>`
+      : `<span class="confluence-chip" style="background:rgba(255,255,255,0.08); color:var(--text-muted);">${window.i18n ? window.i18n.t('diag.badge_punctual', '⚡ Puntual') : '⚡ Puntual'}</span>`;
 
     const chipsHtml = inc.signals.map(s => {
       let cClass = 'cpu';
@@ -2090,13 +2160,17 @@ Throughput Inbound: ${(inc.inMbps / 1000).toFixed(2)} Gbps
 Causa Raíz: ${inc.cause}
 Remediación: ${inc.remediation}`;
 
+    const btnActionText = isExpanded
+      ? (window.i18n ? window.i18n.t('diag.btn_hide', '▲ Ocultar') : '▲ Ocultar')
+      : (window.i18n ? window.i18n.t('diag.btn_view_detail', '▼ Ver Detalle') : '▼ Ver Detalle');
+
     html += `
       <tr class="incident-row ${isExpanded ? 'expanded' : ''}" data-inc-id="${inc.id}">
         <td style="font-family:var(--font-mono); font-weight:600; color:var(--accent-cyan);">
           ${inc.dateStr}
         </td>
         <td>
-          <span class="problem-card-badge ${sevBadgeClass}">${inc.severity}</span>
+          <span class="problem-card-badge ${sevBadgeClass}">${sevBadgeText}</span>
         </td>
         <td>${natBadge}</td>
         <td>
@@ -2104,19 +2178,25 @@ Remediación: ${inc.remediation}`;
         </td>
         <td style="text-align:right;">
           <button class="btn btn-sm btn-outline" style="padding:3px 10px; font-size:11px;">
-            ${isExpanded ? '▲ Ocultar' : '▼ Ver Detalle'}
+            ${btnActionText}
           </button>
         </td>
       </tr>
     `;
 
     if (isExpanded) {
+      const titleExact = window.i18n ? window.i18n.t('diag.exact_values', '📊 Valores Exactos en la Franja') : '📊 Valores Exactos en la Franja';
+      const titleCause = window.i18n ? window.i18n.t('diag.drawer_cause', '🔍 Diagnóstico y Causa Raíz') : '🔍 Diagnóstico y Causa Raíz';
+      const titleRemedy = window.i18n ? window.i18n.t('diag.drawer_remedy', '🛠️ Remediación Check Point Recomendada') : '🛠️ Remediación Check Point Recomendada';
+      const btnCopy = window.i18n ? window.i18n.t('diag.btn_copy_report', '📋 Copiar Reporte Forense') : '📋 Copiar Reporte Forense';
+      const btnCopied = window.i18n ? window.i18n.t('diag.btn_report_copied', '✓ Reporte Copiado') : '✓ Reporte Copiado';
+
       html += `
         <tr class="incident-drawer-row">
           <td colspan="5">
             <div class="incident-drawer-content">
               <div class="incident-drawer-box">
-                <div class="incident-drawer-box-title">📊 Valores Exactos en la Franja</div>
+                <div class="incident-drawer-box-title">${titleExact}</div>
                 <div class="incident-drawer-box-body" style="font-family:var(--font-mono); font-size:11.5px;">
                   <div>• CPU Core 1 Max: <strong>${inc.core1Max}%</strong> (Media: ${inc.core1Avg}%)</div>
                   <div>• CPU Promedio Gateway: <strong>${inc.cpuTotal}%</strong></div>
@@ -2124,18 +2204,18 @@ Remediación: ${inc.remediation}`;
                   <div>• Descartes Registrados: <strong>${Number(inc.dropTot).toLocaleString()} drops/hora</strong></div>
                   <div>• Throughput Inbound Pico: <strong>${(inc.inMbps / 1000).toFixed(2)} Gbps</strong></div>
                   <div style="margin-top:10px;">
-                    <button class="btn btn-sm btn-outline" onclick="event.stopPropagation(); navigator.clipboard.writeText(\`${copyReportText.replace(/`/g, '\\`')}\`); this.textContent='✓ Reporte Copiado'; setTimeout(()=>this.textContent='📋 Copiar Reporte', 1500);">📋 Copiar Reporte Forense</button>
+                    <button class="btn btn-sm btn-outline" onclick="event.stopPropagation(); navigator.clipboard.writeText(\`${copyReportText.replace(/`/g, '\\`')}\`); this.textContent='${btnCopied}'; setTimeout(()=>this.textContent='${btnCopy}', 1500);">${btnCopy}</button>
                   </div>
                 </div>
               </div>
               <div class="incident-drawer-box">
-                <div class="incident-drawer-box-title">🔍 Diagnóstico y Causa Raíz</div>
+                <div class="incident-drawer-box-title">${titleCause}</div>
                 <div class="incident-drawer-box-body">
                   ${inc.cause}
                 </div>
               </div>
               <div class="incident-drawer-box">
-                <div class="incident-drawer-box-title">🛠️ Remediación Check Point Recomendada</div>
+                <div class="incident-drawer-box-title">${titleRemedy}</div>
                 <div class="incident-drawer-box-body">
                   ${inc.remediation}
                 </div>
@@ -2339,6 +2419,8 @@ function renderOverviewDisks() {
   const container = document.getElementById('overview-disks-container');
   if (!container) return;
   const disks = CP_DATA.disks;
+  const partLabel = window.i18n ? window.i18n.t('overview.partition_label', 'Partición') : 'Partición';
+  const freeLabel = window.i18n ? window.i18n.t('overview.free_gb', 'GB libres') : 'GB libres';
 
   container.innerHTML = disks.map(d => {
     let colorClass = 'emerald';
@@ -2348,7 +2430,7 @@ function renderOverviewDisks() {
     return `
       <div>
         <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:13px;">
-          <strong>Partición ${d.mount}</strong>
+          <strong>${partLabel} ${d.mount}</strong>
           <span style="font-family:var(--font-mono); color:var(--text-muted);">
             ${d.used_gb} GB / ${d.total_gb} GB (${d.used_pct}%)
           </span>
@@ -2357,7 +2439,7 @@ function renderOverviewDisks() {
           <div class="meter-track">
             <div class="meter-fill ${colorClass}" style="width: ${d.used_pct}%;"></div>
           </div>
-          <span style="font-size:11px; font-family:var(--font-mono);">${d.free_gb} GB libres</span>
+          <span style="font-size:11px; font-family:var(--font-mono);">${d.free_gb} ${freeLabel}</span>
         </div>
       </div>
     `;
@@ -2368,6 +2450,10 @@ function renderOverviewDisks() {
 // PAGE 2: SYSTEM & CPU
 // =============================================================================
 function renderSystemPage() {
+  const highDemand = window.i18n ? window.i18n.t('system.high_demand', 'Alta Demanda') : 'Alta Demanda';
+  const normal = window.i18n ? window.i18n.t('system.normal', 'Normal') : 'Normal';
+  const daysSuffix = window.i18n ? window.i18n.t('header.days_suffix', 'días') : 'días';
+
   // Populate Cores Table
   const tbody = document.querySelector('#table-cpu-cores tbody');
   if (tbody) {
@@ -2383,7 +2469,7 @@ function renderSystemPage() {
         <td class="cell-mono">${fmtNum(c.max_interrupts)}</td>
         <td>
           <span class="pill-badge ${c.avg_usage > 50 ? 'down' : 'active'}">
-            ${c.avg_usage > 50 ? 'Alta Demanda' : 'Normal'}
+            ${c.avg_usage > 50 ? highDemand : normal}
           </span>
         </td>
       </tr>
@@ -2415,19 +2501,32 @@ function renderSystemPage() {
   const sysGrid = document.getElementById('system-details-grid');
   if (sysGrid) {
     const s = CP_DATA.system;
+    const lNode = window.i18n ? window.i18n.t('system.node_name', 'Nombre del Nodo') : 'Nombre del Nodo';
+    const lOS = window.i18n ? window.i18n.t('system.os_label', 'Sistema Operativo') : 'Sistema Operativo';
+    const lCPVer = window.i18n ? window.i18n.t('system.cp_version', 'Versión Check Point') : 'Versión Check Point';
+    const lJHF = window.i18n ? window.i18n.t('system.jhf_branch', 'Jumbo HF Branch') : 'Jumbo HF Branch';
+    const lBuild = window.i18n ? window.i18n.t('system.build_num', 'Build Number') : 'Build Number';
+    const lHW = window.i18n ? window.i18n.t('system.hw_model', 'Modelo Plataforma') : 'Modelo Plataforma';
+    const lMode = window.i18n ? window.i18n.t('system.operating_mode', 'Modo Operativo') : 'Modo Operativo';
+    const lCluster = window.i18n ? window.i18n.t('system.cluster_status', 'Estado de Cluster') : 'Estado de Cluster';
+    const lUptime = window.i18n ? window.i18n.t('system.uptime_label', 'Tiempo Activo (Uptime)') : 'Tiempo Activo (Uptime)';
+    const lPeriod = window.i18n ? window.i18n.t('system.monitored_period', 'Periodo Monitorizado') : 'Periodo Monitorizado';
+    const lSnaps = window.i18n ? window.i18n.t('system.total_snapshots', 'Total Snapshots') : 'Total Snapshots';
+    const lDrops = window.i18n ? window.i18n.t('system.rx_drops_hw', 'Drops Hardware Rx') : 'Drops Hardware Rx';
+
     sysGrid.innerHTML = `
-      <div class="info-item"><span class="info-label">Nombre del Nodo</span><span class="info-val">${s.node_name}</span></div>
-      <div class="info-item"><span class="info-label">Sistema Operativo</span><span class="info-val">${s.os}</span></div>
-      <div class="info-item"><span class="info-label">Versión Check Point</span><span class="info-val">${s.version}</span></div>
-      <div class="info-item"><span class="info-label">Jumbo HF Branch</span><span class="info-val">${s.branch}</span></div>
-      <div class="info-item"><span class="info-label">Build Number</span><span class="info-val">${s.build}</span></div>
-      <div class="info-item"><span class="info-label">Modelo Plataforma</span><span class="info-val">${s.hw_model}</span></div>
-      <div class="info-item"><span class="info-label">Modo Operativo</span><span class="info-val">${s.config}</span></div>
-      <div class="info-item"><span class="info-label">Estado de Cluster</span><span class="info-val">${s.cluster_status}</span></div>
-      <div class="info-item"><span class="info-label">Tiempo Activo (Uptime)</span><span class="info-val">${s.latest_uptime}</span></div>
-      <div class="info-item"><span class="info-label">Periodo Monitorizado</span><span class="info-val">${s.duration_days} días</span></div>
-      <div class="info-item"><span class="info-label">Total Snapshots</span><span class="info-val">${fmtNum(s.total_snapshots)}</span></div>
-      <div class="info-item"><span class="info-label">Drops Hardware Rx</span><span class="info-val">${s.rx_drops_hw}</span></div>
+      <div class="info-item"><span class="info-label">${lNode}</span><span class="info-val">${s.node_name}</span></div>
+      <div class="info-item"><span class="info-label">${lOS}</span><span class="info-val">${s.os}</span></div>
+      <div class="info-item"><span class="info-label">${lCPVer}</span><span class="info-val">${s.version}</span></div>
+      <div class="info-item"><span class="info-label">${lJHF}</span><span class="info-val">${s.branch}</span></div>
+      <div class="info-item"><span class="info-label">${lBuild}</span><span class="info-val">${s.build}</span></div>
+      <div class="info-item"><span class="info-label">${lHW}</span><span class="info-val">${s.hw_model}</span></div>
+      <div class="info-item"><span class="info-label">${lMode}</span><span class="info-val">${s.config}</span></div>
+      <div class="info-item"><span class="info-label">${lCluster}</span><span class="info-val">${s.cluster_status}</span></div>
+      <div class="info-item"><span class="info-label">${lUptime}</span><span class="info-val">${s.latest_uptime}</span></div>
+      <div class="info-item"><span class="info-label">${lPeriod}</span><span class="info-val">${s.duration_days} ${daysSuffix}</span></div>
+      <div class="info-item"><span class="info-label">${lSnaps}</span><span class="info-val">${fmtNum(s.total_snapshots)}</span></div>
+      <div class="info-item"><span class="info-label">${lDrops}</span><span class="info-val">${s.rx_drops_hw}</span></div>
     `;
   }
 }
@@ -2457,6 +2556,7 @@ function filterAndRenderInterfaces() {
 
   const query = interfacesFilter.search.toLowerCase();
   const typeFilter = interfacesFilter.type;
+  const notAssigned = window.i18n ? window.i18n.t('if.not_assigned', 'No asignada') : 'No asignada';
 
   const filtered = CP_DATA.interfaces.filter(i => {
     const matchesSearch = !query || 
@@ -2479,7 +2579,7 @@ function filterAndRenderInterfaces() {
         <td><span class="pill-badge ${typeBadge}">${i.type.toUpperCase()}</span></td>
         <td class="cell-mono">${i.speed || '-'}</td>
         <td><span class="pill-badge ${i.state === 'On' ? 'active' : 'down'}">${i.state}</span></td>
-        <td class="cell-mono">${i.ipv4 || '<span style="color:var(--text-dim);">No asignada</span>'}</td>
+        <td class="cell-mono">${i.ipv4 || `<span style="color:var(--text-dim);">${notAssigned}</span>`}</td>
         <td class="cell-mono">${fmtNum(i.rx_avg_mbps)}</td>
         <td class="cell-mono"><strong>${fmtNum(i.rx_max_mbps)}</strong></td>
         <td class="cell-mono">${fmtNum(i.tx_avg_mbps)}</td>
@@ -2777,9 +2877,14 @@ function renderSpikesTable() {
 
   tbody.innerHTML = pageItems.map(s => {
     let sevBadge = 'active';
-    let sevText = 'Moderado';
-    if (s.avg_usage >= 90) { sevBadge = 'down'; sevText = 'Crítico'; }
-    else if (s.avg_usage >= 80) { sevBadge = 'eth'; sevText = 'Alto'; }
+    let sevText = window.i18n ? window.i18n.t('spikes.severity_moderate', 'Moderado') : 'Moderado';
+    if (s.avg_usage >= 90) { 
+      sevBadge = 'down'; 
+      sevText = window.i18n ? window.i18n.t('spikes.severity_crit', 'Crítico') : 'Crítico'; 
+    } else if (s.avg_usage >= 80) { 
+      sevBadge = 'eth'; 
+      sevText = window.i18n ? window.i18n.t('spikes.severity_high', 'Alto') : 'Alto'; 
+    }
 
     return `
       <tr>
@@ -2795,7 +2900,9 @@ function renderSpikesTable() {
 
   const countEl = document.getElementById('spikes-pagination-info');
   if (countEl) {
-    countEl.textContent = total > 0 ? `Mostrando ${start + 1} - ${end} de ${fmtNum(total)} eventos` : 'No se encontraron eventos';
+    const noEvents = window.i18n ? window.i18n.t('spikes.no_events', 'No se encontraron eventos') : 'No se encontraron eventos';
+    const showingText = window.i18n ? window.i18n.t('spikes.showing_pagination', `Mostrando ${start + 1} - ${end} de ${fmtNum(total)} eventos`, { start: start + 1, end: end, total: fmtNum(total) }) : `Mostrando ${start + 1} - ${end} de ${fmtNum(total)} eventos`;
+    countEl.textContent = total > 0 ? showingText : noEvents;
   }
 }
 
@@ -2903,6 +3010,7 @@ function renderCatalogTable() {
   const tables = CP_DATA.table_catalog.filter(t => {
     return !query || t.name.toLowerCase().includes(query) || t.category.toLowerCase().includes(query);
   });
+  const viewBtnText = window.i18n ? window.i18n.t('db.btn_view_records', '🔍 Ver Registros') : '🔍 Ver Registros';
 
   tbody.innerHTML = tables.map(t => {
     const colNames = t.columns.map(c => c.name).slice(0, 4).join(', ') + (t.columns.length > 4 ? '...' : '');
@@ -2915,7 +3023,7 @@ function renderCatalogTable() {
         <td style="color:var(--text-muted); font-size:11px; max-width:280px; overflow:hidden; text-overflow:ellipsis;">${colNames}</td>
         <td>
           <button class="btn btn-primary" style="padding:4px 10px; font-size:11px;" onclick="openTableViewer('${t.name}')">
-            🔍 Ver Registros
+            ${viewBtnText}
           </button>
         </td>
       </tr>
@@ -2929,14 +3037,19 @@ async function openTableViewer(tableName, page = 1) {
   modalState.page = page;
 
   const modal = document.getElementById('modal-table-viewer');
-  document.getElementById('modal-table-name').textContent = `Tabla: ${tableName}`;
-  document.getElementById('modal-row-count-badge').textContent = 'Cargando datos...';
+  const tablePrefix = window.i18n ? window.i18n.t('modal.table_prefix', 'Tabla:') : 'Tabla:';
+  const loadingData = window.i18n ? window.i18n.t('modal.loading_data', 'Cargando datos...') : 'Cargando datos...';
+  const queryingRecords = window.i18n ? window.i18n.t('modal.querying_records', 'Consultando registros...') : 'Consultando registros...';
+  const errLoad = window.i18n ? window.i18n.t('modal.error_load', 'No se pudieron cargar registros para esta tabla.') : 'No se pudieron cargar registros para esta tabla.';
+
+  document.getElementById('modal-table-name').textContent = `${tablePrefix} ${tableName}`;
+  document.getElementById('modal-row-count-badge').textContent = loadingData;
   modal.classList.add('active');
 
   const thead = document.querySelector('#modal-table-content thead');
   const tbody = document.querySelector('#modal-table-content tbody');
   thead.innerHTML = '';
-  tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:30px;"><div class="spinner"></div> Consultando registros...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:30px;"><div class="spinner"></div> ${queryingRecords}</td></tr>`;
 
   try {
     // Attempt to query live server API
@@ -2960,18 +3073,19 @@ async function openTableViewer(tableName, page = 1) {
     modalState.currentRows = [tableMeta.sample];
     renderModalTable(cols, [tableMeta.sample], tableMeta.row_count, 1, true);
   } else {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:30px; color:var(--accent-rose);">No se pudieron cargar registros para esta tabla.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:30px; color:var(--accent-rose);">${errLoad}</td></tr>`;
   }
 }
 
 function renderModalTable(cols, rows, total, page, isFallback = false) {
   const thead = document.querySelector('#modal-table-content thead');
   const tbody = document.querySelector('#modal-table-content tbody');
+  const emptyText = window.i18n ? window.i18n.t('tableview.empty', 'Sin registros') : 'Sin registros';
 
   thead.innerHTML = `<tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr>`;
   
   if (!rows || rows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="${cols.length}" style="text-align:center; padding:20px;">Sin registros</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${cols.length}" style="text-align:center; padding:20px;">${emptyText}</td></tr>`;
   } else {
     tbody.innerHTML = rows.map(r => `
       <tr>
@@ -2981,10 +3095,11 @@ function renderModalTable(cols, rows, total, page, isFallback = false) {
   }
 
   const badgeText = isFallback ? 
-    `Muestra pre-extraída (Total en SQLite: ${fmtNum(total)})` : 
-    `Página ${page} (Total: ${fmtNum(total)} registros)`;
+    (window.i18n ? window.i18n.t('modal.sample_pre_extracted', `Muestra pre-extraída (Total en SQLite: ${fmtNum(total)})`, { total: fmtNum(total) }) : `Muestra pre-extraída (Total en SQLite: ${fmtNum(total)})`) : 
+    (window.i18n ? window.i18n.t('modal.page_total_records', `Página ${page} (Total: ${fmtNum(total)} registros)`, { page: page, total: fmtNum(total) }) : `Página ${page} (Total: ${fmtNum(total)} registros)`);
   document.getElementById('modal-row-count-badge').textContent = badgeText;
-  document.getElementById('modal-pagination-info').textContent = `Página ${page}`;
+  const pagePrefix = window.i18n ? window.i18n.t('tableview.page_prefix', 'Página') : 'Página';
+  document.getElementById('modal-pagination-info').textContent = `${pagePrefix} ${page}`;
 }
 
 // SQL direct query runner
@@ -2996,7 +3111,8 @@ async function runSqlQuery() {
   const tbody = document.querySelector('#table-sql-results tbody');
 
   if (!query) return;
-  statusEl.textContent = 'Ejecutando consulta...';
+  const executingMsg = window.i18n ? window.i18n.t('db.status_executing', 'Ejecutando consulta...') : 'Ejecutando consulta...';
+  statusEl.textContent = executingMsg;
 
   try {
     const res = await fetch(`/api/sql?q=${encodeURIComponent(query)}`);
@@ -3006,7 +3122,8 @@ async function runSqlQuery() {
     }
     const data = await res.json();
     panel.style.display = 'block';
-    statusEl.textContent = `${data.count} filas obtenidas`;
+    const rowsFetched = window.i18n ? window.i18n.t('db.rows_fetched_count', `${data.count} filas obtenidas`, { count: data.count }) : `${data.count} filas obtenidas`;
+    statusEl.textContent = rowsFetched;
 
     sqlState.columns = data.columns || [];
     sqlState.rows = (data.rows || []).map(row => {
