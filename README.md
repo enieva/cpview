@@ -37,18 +37,18 @@ Aplicación web interactiva desarrollada para analizar, explorar y visualizar lo
 
 ## 📑 Secciones del Menú Lateral (Páginas Disponibles)
 
-| Sección | Icono | Descripción y Métricas Clave |
-|---|:---:|---|
-| **Resumen Ejecutivo** | 📊 | Tarjetas KPI de Throughput (Avg ~16.3 Gbps, Pico ~1.27 Tbps), Conexiones concurrentes (~400k), Caídas acumuladas (~126M), estado del nodo, uptime de 119 días y almacenamiento. |
-| **Sistema y CPU** | 🖥️ | Desglose de arquitectura multinúcleo: Cores SND (0, 2) vs CoreXL FW Workers (1, 3), consumo de CPU individual, memoria RAM (15.4 GB, 33.1% usada), swap y parámetros de kernel. |
-| **Interfaces de Red** | 🌐 | Catálogo de las 57 interfaces (Bonds `bond1` y `bond2` de 20G, Interfaces físicas de fibra 10G `eth1-13`, `eth2-13`, VLANs 802.1Q con sus subredes IPv4), comparativa gráfica de Throughput pico Rx/Tx y filtros interactivos. |
-| **Tráfico y Conexiones** | 🛡️ | Evolución temporal de conexiones concurrentes en Firewall (`FW`), `Host SXL` y `Host Streaming`, desglose de estados TCP (Establecidas, Handshake, No-TCP) y tasa de nuevas conexiones por segundo (hasta 396k conns/sec). |
-| **Descartes y Drops** | 🚫 | Análisis profundo de razones de descarte (`Rulebase`: 124.4M caídas, `General PSL`: 2.03M, `General FnA`: 136k, `Anti-Spoofing PPAK`: 21M, `Drop Templates`: 14.3M) y evolución horaria. |
-| **Flow Profiler (CPU)** | 🌊 | Distribución de ciclos de CPU por protocolo/puerto L4 (`TCP:1024`, `UDP:53 DNS`, `UDP:161 SNMP`, `TCP:445 SMB`, `TCP:443 HTTPS`) y por módulo de inspección (`Chain modules`, `Inbound F2F`, `Inspect`, `SXL notifications`, `PSL engine`). |
-| **SecureXL & CoreXL** | ⚡ | Estado de aceleración por hardware/kernel, razones de paso F2V (*Forward-to-Virtual*), colas de *Enqueue Fails* de Multik Dispatcher y Throughput acelerado PPAK VS0. |
-| **Spike Detective** | 🔍 | Diagnóstico forense de picos de CPU y threads. Incluye **selector de nivel mínimo de alarma** (Todos, Moderado ≥75%, Alto ≥80%, Crítico ≥90%), alternador de visualización temporal (**Barras** vs **Línea / Área**), distribución por Cores, top procesos/hilos y registro filtrable. |
-| **VPN & Blades** | 🔐 | Métricas de túneles VPN IPsec e IKE SAs, estadísticas de SSL Inspection (TLS 1.2 y TLS 1.3), categorización SNI de URL Filtering y tasa de logging de Log Tracker. |
-| **Explorador SQLite** | 🗄️ | Catálogo navegable de las **122 tablas activas** en la base de datos con número de registros, esquema de columnas, visor modal de registros en vivo con paginación y consola de ejecución SQL directa. |
+| Sección                  | Icono | Descripción y Métricas Clave                                                                                                                                                                                                                                                           |
+| ------------------------ | :---: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Resumen Ejecutivo**    |   📊   | Tarjetas KPI de Throughput (Avg ~16.3 Gbps, Pico ~1.27 Tbps), Conexiones concurrentes (~400k), Caídas acumuladas (~126M), estado del nodo, uptime de 119 días y almacenamiento.                                                                                                        |
+| **Sistema y CPU**        |   🖥️   | Desglose de arquitectura multinúcleo: Cores SND (0, 2) vs CoreXL FW Workers (1, 3), consumo de CPU individual, memoria RAM (15.4 GB, 33.1% usada), swap y parámetros de kernel.                                                                                                        |
+| **Interfaces de Red**    |   🌐   | Catálogo de las 57 interfaces (Bonds `bond1` y `bond2` de 20G, Interfaces físicas de fibra 10G `eth1-13`, `eth2-13`, VLANs 802.1Q con sus subredes IPv4), comparativa gráfica de Throughput pico Rx/Tx y filtros interactivos.                                                         |
+| **Tráfico y Conexiones** |   🛡️   | Evolución temporal de conexiones concurrentes en Firewall (`FW`), `Host SXL` y `Host Streaming`, desglose de estados TCP (Establecidas, Handshake, No-TCP) y tasa de nuevas conexiones por segundo (hasta 396k conns/sec).                                                             |
+| **Descartes y Drops**    |   🚫   | Análisis profundo de razones de descarte (`Rulebase`: 124.4M caídas, `General PSL`: 2.03M, `General FnA`: 136k, `Anti-Spoofing PPAK`: 21M, `Drop Templates`: 14.3M) y evolución horaria.                                                                                               |
+| **Flow Profiler (CPU)**  |   🌊   | Distribución de ciclos de CPU por protocolo/puerto L4 (`TCP:1024`, `UDP:53 DNS`, `UDP:161 SNMP`, `TCP:445 SMB`, `TCP:443 HTTPS`) y por módulo de inspección (`Chain modules`, `Inbound F2F`, `Inspect`, `SXL notifications`, `PSL engine`).                                            |
+| **SecureXL & CoreXL**    |   ⚡   | Estado de aceleración por hardware/kernel, razones de paso F2V (*Forward-to-Virtual*), colas de *Enqueue Fails* de Multik Dispatcher y Throughput acelerado PPAK VS0.                                                                                                                  |
+| **Spike Detective**      |   🔍   | Diagnóstico forense de picos de CPU y threads. Incluye **selector de nivel mínimo de alarma** (Todos, Moderado ≥75%, Alto ≥80%, Crítico ≥90%), alternador de visualización temporal (**Barras** vs **Línea / Área**), distribución por Cores, top procesos/hilos y registro filtrable. |
+| **VPN & Blades**         |   🔐   | Métricas de túneles VPN IPsec e IKE SAs, estadísticas de SSL Inspection (TLS 1.2 y TLS 1.3), categorización SNI de URL Filtering y tasa de logging de Log Tracker.                                                                                                                     |
+| **Explorador SQLite**    |   🗄️   | Catálogo navegable de las **122 tablas activas** en la base de datos con número de registros, esquema de columnas, visor modal de registros en vivo con paginación y consola de ejecución SQL directa.                                                                                 |
 
 ---
 
@@ -77,7 +77,6 @@ O abrir directamente `index.html` en tu navegador.
 
 ## 📁 Estructura del Proyecto
 
-- `SG_FWNET-ch01-01_2_4_2024_16_27.CPViewDB.dat`: Base de datos SQLite original Check Point CPView (1.34 GB).
 - `index.html`: Estructura semántica, menú lateral, vistas de cada sección y modal visor de tablas.
 - `styles.css`: Hoja de estilos con variables CSS, dark mode, flex/grid responsivo y badges.
 - `app.js`: Lógica de renderizado, controladores de gráficos Chart.js, filtros, ordenación y buscador.
