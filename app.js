@@ -39,6 +39,28 @@ let interfacesFilter = { search: '', type: 'ALL' };
 let spikesState = { search: '', page: 1, pageSize: 25, severity: 'all', timelineType: 'bar' };
 let modalState = { tableName: '', page: 1, limit: 50, currentRows: [], columns: [] };
 let sqlState = { columns: [], rows: [] };
+
+// Time Horizon Global State
+let timeRangeState = {
+  mode: 'all', // 'all', '1w', '1d', 'custom'
+  selectedWeekIndex: 1, // Default to Week 2 (Incidente Crítico 10-16 Mar)
+  selectedDay: '2024-03-13', // Default to critical incident apex day
+  startDate: '', // YYYY-MM-DD
+  endDate: '',   // YYYY-MM-DD
+  startTs: 0,
+  endTs: Infinity
+};
+
+function filterTimeSeries(arr, tsProp = 'ts') {
+  if (!arr || !Array.isArray(arr)) return [];
+  const startTs = timeRangeState.startTs || 0;
+  const endTs = timeRangeState.endTs || Infinity;
+  return arr.filter(item => {
+    const val = item[tsProp];
+    if (val === undefined || val === null) return true;
+    return val >= startTs && val <= endTs;
+  });
+}
 let chartGenState = {
   sourceId: 'cpu-cores',
   allRows: [],
@@ -1152,6 +1174,672 @@ function setupLanguageSystem() {
 }
 
 // ============================================================================
+// Global Time Range Horizon System (All, 1 Week, 1 Day, Custom Start/End)
+// ============================================================================
+
+function getAvailableWeeks() {
+  const t = (k, def) => (window.i18n ? window.i18n.t(k, def) : def);
+  return [
+    {
+      id: 'w1',
+      label: t('timerange.week_option_1', 'Semana 1: 03 Mar — 09 Mar (7 días)'),
+      start: '2024-03-03',
+      end: '2024-03-09',
+      isCrit: false
+    },
+    {
+      id: 'w2',
+      label: t('timerange.week_option_2', 'Semana 2: 10 Mar — 16 Mar (7 días - Incidente Crítico 🚨)'),
+      start: '2024-03-10',
+      end: '2024-03-16',
+      isCrit: true
+    },
+    {
+      id: 'w3',
+      label: t('timerange.week_option_3', 'Semana 3: 17 Mar — 23 Mar (7 días)'),
+      start: '2024-03-17',
+      end: '2024-03-23',
+      isCrit: false
+    },
+    {
+      id: 'w4',
+      label: t('timerange.week_option_4', 'Semana 4: 24 Mar — 30 Mar (7 días)'),
+      start: '2024-03-24',
+      end: '2024-03-30',
+      isCrit: false
+    },
+    {
+      id: 'w5',
+      label: t('timerange.week_option_5', 'Semana 5: 31 Mar — 02 Abr (3 días - Cierre BD)'),
+      start: '2024-03-31',
+      end: '2024-04-02',
+      isCrit: false
+    },
+    {
+      id: 'w_last7',
+      label: t('timerange.week_option_last7', 'Últimos 7 días: 27 Mar — 02 Abr'),
+      start: '2024-03-27',
+      end: '2024-04-02',
+      isCrit: false
+    }
+  ];
+}
+
+function formatFriendlyDay(dateStr) {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const y = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10) - 1;
+  const d = parseInt(parts[2], 10);
+  const date = new Date(Date.UTC(y, m, d));
+
+  const lang = window.i18n ? window.i18n.currentLang : 'es';
+  const locale = lang === 'en' ? 'en-US' : (lang === 'pt' ? 'pt-PT' : 'es-ES');
+  try {
+    const formatted = date.toLocaleDateString(locale, {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'UTC'
+    });
+    return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+  } catch (e) {
+    return `${d}/${m + 1}/${y}`;
+  }
+}
+
+function updateCustomDurationBadge(startDateStr, endDateStr) {
+  if (!startDateStr || !endDateStr) return;
+  const d1 = new Date(startDateStr + 'T00:00:00Z');
+  const d2 = new Date(endDateStr + 'T23:59:59Z');
+  const diffMs = Math.max(0, d2.getTime() - d1.getTime());
+  const days = Math.max(1, Math.round(diffMs / 86400000));
+  const hours = days * 24;
+
+  const t = (k, def) => (window.i18n ? window.i18n.t(k, def) : def);
+  const textEl = document.getElementById('custom-duration-text');
+  if (textEl) {
+    if (days <= 1) {
+      textEl.textContent = `1 ${t('timerange.days_suffix', 'día')} (24 ${t('timerange.hours_suffix', 'horas')})`;
+    } else {
+      textEl.textContent = `${days} ${t('timerange.days_suffix', 'días')} (${hours} ${t('timerange.hours_suffix', 'horas')})`;
+    }
+  }
+}
+
+function populateWeekDropdown() {
+  const selectEl = document.getElementById('time-select-week');
+  if (!selectEl) return;
+  selectEl.innerHTML = '';
+  const weeks = getAvailableWeeks();
+  weeks.forEach((wk, idx) => {
+    const opt = document.createElement('option');
+    opt.value = String(idx);
+    opt.textContent = wk.label;
+    if (idx === timeRangeState.selectedWeekIndex) {
+      opt.selected = true;
+    }
+    selectEl.appendChild(opt);
+  });
+  selectEl.value = String(timeRangeState.selectedWeekIndex);
+}
+
+function initTimeRangeBoundsFromData() {
+  if (!CP_DATA || !CP_DATA.system) return;
+  const sys = CP_DATA.system;
+  const startIso = sys.start_iso ? sys.start_iso.substring(0, 10) : '2024-03-03';
+  const endIso = sys.end_iso ? sys.end_iso.substring(0, 10) : '2024-04-02';
+
+  // Restore saved state if present
+  try {
+    const saved = localStorage.getItem('cpview_time_range_state_v2');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.mode) timeRangeState.mode = parsed.mode;
+      if (typeof parsed.selectedWeekIndex === 'number') timeRangeState.selectedWeekIndex = parsed.selectedWeekIndex;
+      if (parsed.selectedDay) timeRangeState.selectedDay = parsed.selectedDay;
+      if (parsed.startDate) timeRangeState.startDate = parsed.startDate;
+      if (parsed.endDate) timeRangeState.endDate = parsed.endDate;
+    }
+  } catch (e) {}
+
+  if (!timeRangeState.startDate) timeRangeState.startDate = startIso;
+  if (!timeRangeState.endDate) timeRangeState.endDate = endIso;
+  if (!timeRangeState.selectedDay) timeRangeState.selectedDay = '2024-03-13';
+  if (typeof timeRangeState.selectedWeekIndex !== 'number' || timeRangeState.selectedWeekIndex < 0) {
+    timeRangeState.selectedWeekIndex = 1;
+  }
+
+  // Populate Week Dropdown
+  populateWeekDropdown();
+
+  // Set boundaries on date inputs
+  const startInp = document.getElementById('time-range-start-date');
+  const endInp = document.getElementById('time-range-end-date');
+  const dayInp = document.getElementById('time-select-day');
+  const dbBoundsDates = document.getElementById('db-bounds-dates');
+
+  if (startInp) {
+    startInp.min = startIso;
+    startInp.max = endIso;
+    startInp.value = timeRangeState.startDate;
+  }
+  if (endInp) {
+    endInp.min = startIso;
+    endInp.max = endIso;
+    endInp.value = timeRangeState.endDate;
+  }
+  if (dayInp) {
+    dayInp.min = startIso;
+    dayInp.max = endIso;
+    dayInp.value = timeRangeState.selectedDay;
+  }
+  if (dbBoundsDates) {
+    dbBoundsDates.textContent = `${startIso} — ${endIso}`;
+  }
+
+  updateTimeRangeBounds();
+}
+
+function updateTimeRangeBounds() {
+  if (!CP_DATA || !CP_DATA.system) return;
+  const sys = CP_DATA.system;
+  const sysStart = sys.start_timestamp || 1709473235;
+  const sysEnd = sys.end_timestamp || 1712068134;
+
+  if (timeRangeState.mode === 'all') {
+    timeRangeState.startTs = sysStart;
+    timeRangeState.endTs = sysEnd;
+  } else if (timeRangeState.mode === '1w') {
+    const weeks = getAvailableWeeks();
+    let idx = timeRangeState.selectedWeekIndex;
+    if (idx < 0 || idx >= weeks.length) idx = 1;
+    timeRangeState.selectedWeekIndex = idx;
+    const wk = weeks[idx];
+    let s = new Date(wk.start + 'T00:00:00Z').getTime() / 1000;
+    let e = new Date(wk.end + 'T23:59:59Z').getTime() / 1000;
+    timeRangeState.startTs = Math.max(sysStart, s);
+    timeRangeState.endTs = Math.min(sysEnd, e);
+    timeRangeState.startDate = wk.start;
+    timeRangeState.endDate = wk.end;
+  } else if (timeRangeState.mode === '1d') {
+    const day = timeRangeState.selectedDay || '2024-03-13';
+    let s = new Date(day + 'T00:00:00Z').getTime() / 1000;
+    let e = new Date(day + 'T23:59:59Z').getTime() / 1000;
+    timeRangeState.startTs = Math.max(sysStart, s);
+    timeRangeState.endTs = Math.min(sysEnd, e);
+    timeRangeState.startDate = day;
+    timeRangeState.endDate = day;
+  } else if (timeRangeState.mode === 'custom') {
+    let s = timeRangeState.startDate ? new Date(timeRangeState.startDate + 'T00:00:00Z').getTime() / 1000 : sysStart;
+    let e = timeRangeState.endDate ? new Date(timeRangeState.endDate + 'T23:59:59Z').getTime() / 1000 : sysEnd;
+    if (isNaN(s)) s = sysStart;
+    if (isNaN(e)) e = sysEnd;
+    if (s > e) { const tmp = s; s = e; e = tmp; }
+    timeRangeState.startTs = Math.max(sysStart, s);
+    timeRangeState.endTs = Math.min(sysEnd, e);
+  }
+
+  updateTimeRangeUI();
+}
+
+function updateTimeRangeUI() {
+  const mode = timeRangeState.mode;
+  const sys = (CP_DATA && CP_DATA.system) ? CP_DATA.system : {};
+  const startIso = sys.start_iso ? sys.start_iso.substring(0, 10) : '2024-03-03';
+  const endIso = sys.end_iso ? sys.end_iso.substring(0, 10) : '2024-04-02';
+
+  // 1. Update active preset button in bar
+  document.querySelectorAll('#time-horizon-presets .filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-time-range') === mode);
+  });
+
+  // 2. Toggle subbar visibility & individual panels
+  const subbarEl = document.getElementById('time-horizon-subbar');
+  const weekPanel = document.getElementById('time-subcontrol-week');
+  const dayPanel = document.getElementById('time-subcontrol-day');
+  const customPanel = document.getElementById('time-subcontrol-custom');
+
+  if (subbarEl) {
+    subbarEl.style.display = (mode === 'all') ? 'none' : 'block';
+  }
+  if (weekPanel) {
+    weekPanel.style.display = (mode === '1w') ? 'block' : 'none';
+  }
+  if (dayPanel) {
+    dayPanel.style.display = (mode === '1d') ? 'block' : 'none';
+  }
+  if (customPanel) {
+    customPanel.style.display = (mode === 'custom') ? 'block' : 'none';
+  }
+
+  // 3. Update Week Selector Controls
+  if (mode === '1w') {
+    const weeks = getAvailableWeeks();
+    const wk = weeks[timeRangeState.selectedWeekIndex] || weeks[0];
+    const selectWeek = document.getElementById('time-select-week');
+    if (selectWeek) {
+      selectWeek.value = String(timeRangeState.selectedWeekIndex);
+    }
+    const badgeWeek = document.getElementById('week-active-dates-badge');
+    if (badgeWeek) {
+      badgeWeek.textContent = `${wk.start} — ${wk.end}`;
+    }
+    const btnWeekPrev = document.getElementById('btn-week-prev');
+    const btnWeekNext = document.getElementById('btn-week-next');
+    if (btnWeekPrev) btnWeekPrev.disabled = (timeRangeState.selectedWeekIndex <= 0);
+    if (btnWeekNext) btnWeekNext.disabled = (timeRangeState.selectedWeekIndex >= weeks.length - 1);
+
+    document.querySelectorAll('#week-quick-chips .chip-btn').forEach(chip => {
+      const idx = parseInt(chip.getAttribute('data-week-idx'), 10);
+      chip.classList.toggle('active', idx === timeRangeState.selectedWeekIndex);
+    });
+  }
+
+  // 4. Update Day Selector Controls
+  if (mode === '1d') {
+    const dayInp = document.getElementById('time-select-day');
+    if (dayInp) {
+      dayInp.value = timeRangeState.selectedDay;
+      dayInp.min = startIso;
+      dayInp.max = endIso;
+    }
+    const badgeDay = document.getElementById('day-active-name-badge');
+    if (badgeDay) {
+      badgeDay.textContent = formatFriendlyDay(timeRangeState.selectedDay);
+    }
+    const btnDayPrev = document.getElementById('btn-day-prev');
+    const btnDayNext = document.getElementById('btn-day-next');
+    if (btnDayPrev) btnDayPrev.disabled = (timeRangeState.selectedDay <= startIso);
+    if (btnDayNext) btnDayNext.disabled = (timeRangeState.selectedDay >= endIso);
+
+    document.querySelectorAll('#day-quick-chips .chip-btn').forEach(chip => {
+      const qDay = chip.getAttribute('data-quick-day');
+      chip.classList.toggle('active', qDay === timeRangeState.selectedDay);
+    });
+  }
+
+  // 5. Update Custom Range Controls
+  if (mode === 'custom') {
+    const startInp = document.getElementById('time-range-start-date');
+    const endInp = document.getElementById('time-range-end-date');
+    if (startInp) {
+      startInp.min = startIso;
+      startInp.max = timeRangeState.endDate || endIso;
+      startInp.value = timeRangeState.startDate;
+    }
+    if (endInp) {
+      endInp.min = timeRangeState.startDate || startIso;
+      endInp.max = endIso;
+      endInp.value = timeRangeState.endDate;
+    }
+    updateCustomDurationBadge(timeRangeState.startDate, timeRangeState.endDate);
+
+    document.querySelectorAll('#custom-quick-chips .chip-btn').forEach(chip => {
+      const p = chip.getAttribute('data-custom-preset');
+      let isAct = false;
+      if (p === 'q1' && timeRangeState.startDate === '2024-03-03' && timeRangeState.endDate === '2024-03-17') isAct = true;
+      if (p === 'q2' && timeRangeState.startDate === '2024-03-18' && timeRangeState.endDate === '2024-04-02') isAct = true;
+      if (p === 'crit' && timeRangeState.startDate === '2024-03-11' && timeRangeState.endDate === '2024-03-15') isAct = true;
+      if (p === 'last14' && timeRangeState.startDate === '2024-03-20' && timeRangeState.endDate === '2024-04-02') isAct = true;
+      if (p === 'first7' && timeRangeState.startDate === '2024-03-03' && timeRangeState.endDate === '2024-03-09') isAct = true;
+      chip.classList.toggle('active', isAct);
+    });
+  }
+
+  // 6. Update summary text in chip and top header
+  const summaryEl = document.getElementById('time-horizon-summary-text');
+  const samplesEl = document.getElementById('time-horizon-samples-text');
+  const hdrTimerangeEl = document.getElementById('hdr-timerange');
+
+  if (CP_DATA && CP_DATA.system) {
+    const sDateStr = fmtDateShortDay(timeRangeState.startTs);
+    const eDateStr = fmtDateShortDay(timeRangeState.endTs);
+
+    const durationSec = Math.max(0, timeRangeState.endTs - timeRangeState.startTs);
+    const daysSuffix = window.i18n ? window.i18n.t('timerange.days_suffix', 'días') : 'días';
+    const hoursSuffix = window.i18n ? window.i18n.t('timerange.hours_suffix', 'horas') : 'horas';
+
+    let durLabel = '';
+    if (durationSec <= 86400) {
+      durLabel = `${Math.round(durationSec / 3600)} ${hoursSuffix}`;
+    } else {
+      const d = (durationSec / 86400).toFixed(durationSec % 86400 === 0 ? 0 : 1);
+      durLabel = `${d} ${daysSuffix}`;
+    }
+
+    const summaryStr = `${sDateStr} — ${eDateStr} (${durLabel})`;
+    if (summaryEl) summaryEl.textContent = summaryStr;
+    if (hdrTimerangeEl) hdrTimerangeEl.textContent = summaryStr;
+
+    // Samples count
+    const samplesCount = filterTimeSeries(CP_DATA.cpu && CP_DATA.cpu.hourly ? CP_DATA.cpu.hourly : []).length;
+    const samplesStr = window.i18n ? window.i18n.t('timerange.samples_count', `${samplesCount} muestras horarias`, { count: samplesCount }) : `${samplesCount} muestras horarias`;
+    if (samplesEl) samplesEl.textContent = samplesStr;
+  }
+
+  // 7. Sync Diagnostics & Overview range buttons
+  const diagButtons = [
+    { id: 'btn-diag-range-all', active: mode === 'all' },
+    { id: 'btn-diag-range-7d', active: mode === '1w' },
+    { id: 'btn-diag-range-crit', active: mode === 'custom' && timeRangeState.startDate === '2024-03-11' && timeRangeState.endDate === '2024-03-15' }
+  ];
+  diagButtons.forEach(b => {
+    const el = document.getElementById(b.id);
+    if (el) el.classList.toggle('active', b.active);
+  });
+
+  const ovRangeBtns = document.querySelectorAll('#overview-traffic-range .filter-btn');
+  ovRangeBtns.forEach(btn => {
+    const days = btn.getAttribute('data-days');
+    const isAct = (days === '30' && mode === 'all') || (days === '7' && mode === '1w');
+    btn.classList.toggle('active', isAct);
+  });
+
+  // 8. Save preference in localStorage
+  try {
+    localStorage.setItem('cpview_time_range_state_v2', JSON.stringify({
+      mode: timeRangeState.mode,
+      selectedWeekIndex: timeRangeState.selectedWeekIndex,
+      selectedDay: timeRangeState.selectedDay,
+      startDate: timeRangeState.startDate,
+      endDate: timeRangeState.endDate
+    }));
+  } catch (e) {}
+}
+
+function fmtDateShortDay(ts) {
+  if (!ts) return '-';
+  const d = new Date(ts * 1000);
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  const m = monthNames[d.getUTCMonth()];
+  const y = d.getUTCFullYear();
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${day} ${m} ${y} ${hh}:${mm}`;
+}
+
+function setTimeRangeMode(mode, customStart = null, customEnd = null) {
+  timeRangeState.mode = mode;
+  if (customStart) timeRangeState.startDate = customStart;
+  if (customEnd) timeRangeState.endDate = customEnd;
+
+  const startInp = document.getElementById('time-range-start-date');
+  const endInp = document.getElementById('time-range-end-date');
+  if (startInp && timeRangeState.startDate) startInp.value = timeRangeState.startDate;
+  if (endInp && timeRangeState.endDate) endInp.value = timeRangeState.endDate;
+
+  updateTimeRangeBounds();
+
+  // Invalidate diagnostics confluence analysis cache
+  if (typeof diagnosticsState !== 'undefined') {
+    diagnosticsState.cachedAnalysis = null;
+  }
+
+  // Update Overview throughput KPIs if on overview page
+  if (CP_DATA && CP_DATA.traffic && CP_DATA.traffic.hourly) {
+    const tr = filterTimeSeries(CP_DATA.traffic.hourly);
+    let maxThru = 0, sumThru = 0;
+    tr.forEach(t => {
+      if (t.in_mbps_max > maxThru) maxThru = t.in_mbps_max;
+      sumThru += t.in_mbps_avg;
+    });
+    const avgThru = tr.length ? sumThru / tr.length : 0;
+    const avgEl = document.getElementById('kpi-avg-thru');
+    const maxEl = document.getElementById('kpi-max-thru');
+    if (avgEl) avgEl.textContent = fmtThroughput(avgThru);
+    if (maxEl) maxEl.textContent = fmtThroughput(maxThru);
+
+    const filteredDrops = filterTimeSeries(CP_DATA.drops && CP_DATA.drops.hourly ? CP_DATA.drops.hourly : []);
+    const dropsSum = filteredDrops.reduce((acc, d) => acc + (d.total || 0), 0);
+    const kpiDrops = document.getElementById('kpi-drops');
+    if (kpiDrops) kpiDrops.textContent = `${(dropsSum / 1e6).toFixed(2)} M`;
+
+    if (CP_DATA.spikes && CP_DATA.spikes.cpu_spikes) {
+      const filteredSpikes = filterTimeSeries(CP_DATA.spikes.cpu_spikes, 'start_time');
+      const kpiSpikes = document.getElementById('kpi-spikes');
+      if (kpiSpikes) kpiSpikes.textContent = fmtNum(filteredSpikes.length);
+    }
+  }
+
+  // Re-render current page
+  if (typeof activePage !== 'undefined' && activePage) {
+    renderPage(activePage);
+  }
+}
+
+function setWeekRange(index) {
+  const weeks = getAvailableWeeks();
+  if (index < 0 || index >= weeks.length) return;
+  timeRangeState.mode = '1w';
+  timeRangeState.selectedWeekIndex = index;
+  setTimeRangeMode('1w', weeks[index].start, weeks[index].end);
+}
+
+function setDayRange(dayStr) {
+  const sys = (CP_DATA && CP_DATA.system) ? CP_DATA.system : {};
+  const startIso = sys.start_iso ? sys.start_iso.substring(0, 10) : '2024-03-03';
+  const endIso = sys.end_iso ? sys.end_iso.substring(0, 10) : '2024-04-02';
+
+  if (!dayStr) dayStr = '2024-03-13';
+  if (dayStr < startIso) dayStr = startIso;
+  if (dayStr > endIso) dayStr = endIso;
+
+  timeRangeState.mode = '1d';
+  timeRangeState.selectedDay = dayStr;
+  setTimeRangeMode('1d', dayStr, dayStr);
+}
+
+function shiftDay(direction) {
+  const sys = (CP_DATA && CP_DATA.system) ? CP_DATA.system : {};
+  const startIso = sys.start_iso ? sys.start_iso.substring(0, 10) : '2024-03-03';
+  const endIso = sys.end_iso ? sys.end_iso.substring(0, 10) : '2024-04-02';
+
+  const current = timeRangeState.selectedDay || '2024-03-13';
+  const parts = current.split('-');
+  if (parts.length !== 3) return;
+  const d = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)));
+  d.setUTCDate(d.getUTCDate() + direction);
+  const nextIso = d.toISOString().substring(0, 10);
+  if (nextIso >= startIso && nextIso <= endIso) {
+    setDayRange(nextIso);
+  }
+}
+
+function setupTimeRangeSystem() {
+  // 1. Preset buttons
+  document.querySelectorAll('#time-horizon-presets .filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.getAttribute('data-time-range');
+      if (mode === 'custom') {
+        const startInp = document.getElementById('time-range-start-date');
+        const endInp = document.getElementById('time-range-end-date');
+        const s = startInp ? startInp.value : timeRangeState.startDate;
+        const e = endInp ? endInp.value : timeRangeState.endDate;
+        setTimeRangeMode('custom', s, e);
+      } else if (mode === '1w') {
+        setWeekRange(timeRangeState.selectedWeekIndex || 1);
+      } else if (mode === '1d') {
+        setDayRange(timeRangeState.selectedDay || '2024-03-13');
+      } else {
+        setTimeRangeMode('all');
+      }
+    });
+  });
+
+  // 2. Week Controls: Dropdown & Stepper buttons & Quick chips
+  const selectWeek = document.getElementById('time-select-week');
+  if (selectWeek) {
+    selectWeek.addEventListener('change', (e) => {
+      const idx = parseInt(e.target.value, 10);
+      if (!isNaN(idx)) setWeekRange(idx);
+    });
+  }
+
+  const btnWeekPrev = document.getElementById('btn-week-prev');
+  if (btnWeekPrev) {
+    btnWeekPrev.addEventListener('click', () => {
+      setWeekRange(timeRangeState.selectedWeekIndex - 1);
+    });
+  }
+
+  const btnWeekNext = document.getElementById('btn-week-next');
+  if (btnWeekNext) {
+    btnWeekNext.addEventListener('click', () => {
+      setWeekRange(timeRangeState.selectedWeekIndex + 1);
+    });
+  }
+
+  document.querySelectorAll('#week-quick-chips .chip-btn').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const idx = parseInt(chip.getAttribute('data-week-idx'), 10);
+      if (!isNaN(idx)) setWeekRange(idx);
+    });
+  });
+
+  // 3. Day Controls: Date picker & Stepper buttons & Quick chips
+  const dayInp = document.getElementById('time-select-day');
+  if (dayInp) {
+    dayInp.addEventListener('change', (e) => {
+      setDayRange(e.target.value);
+    });
+  }
+
+  const btnDayPrev = document.getElementById('btn-day-prev');
+  if (btnDayPrev) {
+    btnDayPrev.addEventListener('click', () => {
+      shiftDay(-1);
+    });
+  }
+
+  const btnDayNext = document.getElementById('btn-day-next');
+  if (btnDayNext) {
+    btnDayNext.addEventListener('click', () => {
+      shiftDay(1);
+    });
+  }
+
+  document.querySelectorAll('#day-quick-chips .chip-btn').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const qDay = chip.getAttribute('data-quick-day');
+      if (qDay) setDayRange(qDay);
+    });
+  });
+
+  // 4. Custom Controls: Date pickers with validation, min/max helpers, chips, apply & reset
+  const startInp = document.getElementById('time-range-start-date');
+  const endInp = document.getElementById('time-range-end-date');
+  const sys = (CP_DATA && CP_DATA.system) ? CP_DATA.system : {};
+  const startIso = sys.start_iso ? sys.start_iso.substring(0, 10) : '2024-03-03';
+  const endIso = sys.end_iso ? sys.end_iso.substring(0, 10) : '2024-04-02';
+
+  if (startInp) {
+    startInp.addEventListener('input', () => {
+      let s = startInp.value;
+      if (s < startIso) { s = startIso; startInp.value = s; }
+      if (s > endIso) { s = endIso; startInp.value = s; }
+      if (endInp && endInp.value < s) {
+        endInp.value = s;
+      }
+      if (endInp) endInp.min = s;
+      updateCustomDurationBadge(s, endInp ? endInp.value : endIso);
+    });
+  }
+
+  if (endInp) {
+    endInp.addEventListener('input', () => {
+      let e = endInp.value;
+      if (e > endIso) { e = endIso; endInp.value = e; }
+      if (e < startIso) { e = startIso; endInp.value = e; }
+      if (startInp && startInp.value > e) {
+        startInp.value = e;
+      }
+      if (startInp) startInp.max = e;
+      updateCustomDurationBadge(startInp ? startInp.value : startIso, e);
+    });
+  }
+
+  const btnJumpMin = document.getElementById('btn-jump-start-min');
+  if (btnJumpMin && startInp) {
+    btnJumpMin.addEventListener('click', () => {
+      startInp.value = startIso;
+      if (endInp) endInp.min = startIso;
+      updateCustomDurationBadge(startIso, endInp ? endInp.value : endIso);
+    });
+  }
+
+  const btnJumpMax = document.getElementById('btn-jump-end-max');
+  if (btnJumpMax && endInp) {
+    btnJumpMax.addEventListener('click', () => {
+      endInp.value = endIso;
+      if (startInp) startInp.max = endIso;
+      updateCustomDurationBadge(startInp ? startInp.value : startIso, endIso);
+    });
+  }
+
+  const applyBtn = document.getElementById('btn-apply-time-horizon');
+  if (applyBtn) {
+    applyBtn.addEventListener('click', () => {
+      if (startInp && endInp) {
+        setTimeRangeMode('custom', startInp.value, endInp.value);
+      }
+    });
+  }
+
+  const resetBtn = document.getElementById('btn-reset-time-horizon');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      if (startInp) startInp.value = startIso;
+      if (endInp) endInp.value = endIso;
+      setTimeRangeMode('all');
+    });
+  }
+
+  document.querySelectorAll('#custom-quick-chips .chip-btn').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const preset = chip.getAttribute('data-custom-preset');
+      let s = startIso, e = endIso;
+      if (preset === 'q1') {
+        s = '2024-03-03'; e = '2024-03-17';
+      } else if (preset === 'q2') {
+        s = '2024-03-18'; e = '2024-04-02';
+      } else if (preset === 'crit') {
+        s = '2024-03-11'; e = '2024-03-15';
+      } else if (preset === 'last14') {
+        s = '2024-03-20'; e = '2024-04-02';
+      } else if (preset === 'first7') {
+        s = '2024-03-03'; e = '2024-03-09';
+      }
+      if (startInp) startInp.value = s;
+      if (endInp) endInp.value = e;
+      setTimeRangeMode('custom', s, e);
+    });
+  });
+
+  // 5. Header button scrolls to or focuses time horizon bar
+  const hdrBtn = document.getElementById('hdr-timerange-btn');
+  if (hdrBtn) {
+    hdrBtn.addEventListener('click', () => {
+      const bar = document.getElementById('global-time-horizon-bar');
+      if (bar) {
+        bar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
+  }
+
+  // 6. Listen to i18n language changes to keep week labels and day badges fresh
+  if (window.i18n && typeof window.i18n.subscribe === 'function') {
+    window.i18n.subscribe(() => {
+      populateWeekDropdown();
+      updateTimeRangeUI();
+    });
+  }
+}
+
+// ============================================================================
 // UI Scaling, Font Sizing & Typography Configuration System
 // ============================================================================
 
@@ -1480,6 +2168,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupThemeSystem();
   setupScalingSystem();
   setupLanguageSystem();
+  setupTimeRangeSystem();
 
   // Initialize and connect i18n dynamic reactive listener
   if (window.i18n) {
@@ -1488,6 +2177,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (typeof diagnosticsState !== 'undefined') {
         diagnosticsState.cachedAnalysis = null;
       }
+      populateWeekDropdown();
+      updateTimeRangeUI();
       populateUI();
       if (typeof closeSeriesManagerPopover === 'function') {
         closeSeriesManagerPopover();
@@ -1524,6 +2215,7 @@ async function loadData(customUrl) {
     const res = await fetch(currentDataUrl);
     if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch ${currentDataUrl}`);
     CP_DATA = await res.json();
+    initTimeRangeBoundsFromData();
     populateUI();
     renderPage(activePage);
   } catch (err) {
@@ -1642,8 +2334,10 @@ function populateUI() {
   if (brandP) {
     brandP.textContent = sys.node_name || sys.db_filename || 'SG_FWNET-ch01-01';
   }
-  document.getElementById('hdr-timerange').textContent = 
-    `${sys.start_iso.substring(0, 10)} — ${sys.end_iso.substring(0, 10)} (${sys.duration_days} ${daysSuffix})`;
+  
+  if (typeof updateTimeRangeUI === 'function') {
+    updateTimeRangeUI();
+  }
 
   // Badges
   document.getElementById('badge-cores').textContent = `${sys.cores_count} Cores`;
@@ -1654,7 +2348,7 @@ function populateUI() {
   document.getElementById('badge-conns').textContent = '400k';
 
   // KPI Overview
-  const tr = CP_DATA.traffic.hourly;
+  const tr = filterTimeSeries(CP_DATA.traffic.hourly);
   let maxThru = 0, sumThru = 0;
   tr.forEach(t => {
     if (t.in_mbps_max > maxThru) maxThru = t.in_mbps_max;
@@ -1664,8 +2358,11 @@ function populateUI() {
   document.getElementById('kpi-avg-thru').textContent = fmtThroughput(avgThru);
   document.getElementById('kpi-max-thru').textContent = fmtThroughput(maxThru);
 
-  document.getElementById('kpi-drops').textContent = `${(CP_DATA.drops.total / 1e6).toFixed(2)} M`;
-  document.getElementById('kpi-spikes').textContent = fmtNum(CP_DATA.spikes.cpu_spikes.length);
+  const filteredDrops = filterTimeSeries(CP_DATA.drops && CP_DATA.drops.hourly ? CP_DATA.drops.hourly : []);
+  const dropsSum = filteredDrops.reduce((acc, d) => acc + (d.total || 0), 0);
+  document.getElementById('kpi-drops').textContent = `${(dropsSum / 1e6).toFixed(2)} M`;
+  const filteredSpikes = filterTimeSeries(CP_DATA.spikes && CP_DATA.spikes.cpu_spikes ? CP_DATA.spikes.cpu_spikes : [], 'start_time');
+  document.getElementById('kpi-spikes').textContent = fmtNum(filteredSpikes.length);
   document.getElementById('kpi-snapshots-count').textContent = fmtNum(sys.total_snapshots);
   document.getElementById('kpi-total-ifs').textContent = CP_DATA.interfaces.length;
 }
@@ -1730,15 +2427,18 @@ let diagnosticsState = {
 };
 
 function computeDiagnosticsAndConfluence(data) {
-  if (diagnosticsState.cachedAnalysis && diagnosticsState.cachedAnalysis.dataRef === data) {
+  const timeRangeKey = `${timeRangeState.startTs}_${timeRangeState.endTs}`;
+  if (diagnosticsState.cachedAnalysis && 
+      diagnosticsState.cachedAnalysis.dataRef === data &&
+      diagnosticsState.cachedAnalysis.timeRangeKey === timeRangeKey) {
     return diagnosticsState.cachedAnalysis;
   }
   if (!data || !data.cpu || !data.cpu.hourly) return null;
 
-  const cpuH = data.cpu.hourly || [];
-  const trafH = (data.traffic && data.traffic.hourly) || [];
-  const connsH = (data.traffic && data.traffic.conns_hourly) || [];
-  const dropsH = (data.drops && data.drops.hourly) || [];
+  const cpuH = filterTimeSeries(data.cpu.hourly || []);
+  const trafH = filterTimeSeries((data.traffic && data.traffic.hourly) || []);
+  const connsH = filterTimeSeries((data.traffic && data.traffic.conns_hourly) || []);
+  const dropsH = filterTimeSeries((data.drops && data.drops.hourly) || []);
 
   const trafMap = {};
   trafH.forEach(r => { trafMap[r.ts] = r; });
@@ -1871,6 +2571,7 @@ function computeDiagnosticsAndConfluence(data) {
 
   const result = {
     dataRef: data,
+    timeRangeKey,
     incidents,
     heatmap: heatmapCounts,
     totalIncidents: incidents.length,
@@ -1908,27 +2609,22 @@ function renderDiagnosticsPage() {
 
 function renderDiagnosticsChart() {
   if (!CP_DATA || !CP_DATA.cpu || !CP_DATA.cpu.hourly) return;
-  const range = diagnosticsState.range;
 
-  let cpuH = CP_DATA.cpu.hourly;
-  let trafH = (CP_DATA.traffic && CP_DATA.traffic.hourly) || [];
-  let dropsH = (CP_DATA.drops && CP_DATA.drops.hourly) || [];
+  let cpuH = filterTimeSeries(CP_DATA.cpu.hourly);
+  let trafH = filterTimeSeries((CP_DATA.traffic && CP_DATA.traffic.hourly) || []);
+  let dropsH = filterTimeSeries((CP_DATA.drops && CP_DATA.drops.hourly) || []);
 
   const trafMap = {};
   trafH.forEach(r => { trafMap[r.ts] = r; });
   const dropsMap = {};
   dropsH.forEach(r => { dropsMap[r.ts] = r; });
 
-  let sliceData = cpuH;
-  if (range === '7') {
-    sliceData = cpuH.slice(-7 * 24);
-  } else if (range === '14') {
-    sliceData = cpuH.slice(-14 * 24);
-  } else if (range === 'crit') {
-    sliceData = cpuH.filter(r => {
-      const d = new Date(r.ts * 1000);
-      return d.getUTCMonth() === 2 && d.getUTCDate() >= 11 && d.getUTCDate() <= 15;
-    });
+  const sliceData = cpuH;
+  const samplesEl = document.getElementById('diag-chart-samples-count');
+  if (samplesEl) {
+    const samplesCount = sliceData.length;
+    const samplesText = window.i18n ? window.i18n.t('diag.chart_samples', `${samplesCount} muestras horarias correlacionadas`, { count: samplesCount }) : `${samplesCount} muestras horarias correlacionadas`;
+    samplesEl.textContent = samplesText;
   }
 
   const labels = sliceData.map(r => fmtDateShort(r.ts));
@@ -2422,23 +3118,25 @@ function setupDiagnosticsEvents() {
   }
 
   const rangeBtns = [
-    { id: 'btn-diag-range-all', range: 'all' },
-    { id: 'btn-diag-range-14d', range: '14' },
-    { id: 'btn-diag-range-7d', range: '7' },
-    { id: 'btn-diag-range-crit', range: 'crit' }
+    { id: 'btn-diag-range-all', action: () => setTimeRangeMode('all') },
+    { id: 'btn-diag-range-14d', action: () => {
+      if (CP_DATA && CP_DATA.system) {
+        const e = CP_DATA.system.end_timestamp;
+        const s = e - 14 * 86400;
+        const sDate = new Date(s * 1000).toISOString().substring(0, 10);
+        const eDate = new Date(e * 1000).toISOString().substring(0, 10);
+        setTimeRangeMode('custom', sDate, eDate);
+      }
+    }},
+    { id: 'btn-diag-range-7d', action: () => setTimeRangeMode('1w') },
+    { id: 'btn-diag-range-crit', action: () => setTimeRangeMode('custom', '2024-03-11', '2024-03-15') }
   ];
 
   rangeBtns.forEach(b => {
     const btn = document.getElementById(b.id);
     if (btn) {
       btn.addEventListener('click', () => {
-        rangeBtns.forEach(other => {
-          const ob = document.getElementById(other.id);
-          if (ob) ob.classList.remove('active');
-        });
-        btn.classList.add('active');
-        diagnosticsState.range = b.range;
-        renderDiagnosticsChart();
+        b.action();
       });
     }
   });
@@ -2450,11 +3148,9 @@ function setupDiagnosticsEvents() {
 let overviewTrafficDays = 30;
 
 function renderOverviewCharts() {
-  let traffic = CP_DATA.traffic.hourly;
-  if (overviewTrafficDays < 30) {
-    const hours = overviewTrafficDays * 24;
-    traffic = traffic.slice(-hours);
-  }
+  if (!CP_DATA || !CP_DATA.traffic || !CP_DATA.cpu) return;
+
+  const traffic = filterTimeSeries(CP_DATA.traffic.hourly);
   const labels = traffic.map(t => fmtDateShort(t.ts));
 
   // Traffic chart (respects user type & color)
@@ -2507,8 +3203,8 @@ function renderOverviewCharts() {
   });
 
   // CPU & Memory combined chart (respects user type & color)
-  const cpu = CP_DATA.cpu.hourly;
-  const mem = CP_DATA.memory.hourly;
+  const cpu = filterTimeSeries(CP_DATA.cpu.hourly);
+  const mem = filterTimeSeries(CP_DATA.memory.hourly);
   renderUniversalChart('chart-overview-cpu-mem', {
     labels: cpu.map(c => fmtDateShort(c.ts)),
     datasets: [
@@ -2599,7 +3295,7 @@ function renderSystemPage() {
   }
 
   // CPU cores timeline (respects user type & color)
-  const cpu = CP_DATA.cpu.hourly;
+  const cpu = filterTimeSeries(CP_DATA.cpu.hourly);
   const labels = cpu.map(c => fmtDateShort(c.ts));
   renderUniversalChart('chart-cpu-cores-timeline', {
     labels: labels,
@@ -2720,7 +3416,7 @@ function filterAndRenderInterfaces() {
 // PAGE 4: TRAFFIC & CONNECTIONS
 // =============================================================================
 function renderTrafficPage() {
-  const conns = CP_DATA.traffic.conns_hourly;
+  const conns = filterTimeSeries(CP_DATA.traffic.conns_hourly);
   const labels = conns.map(c => fmtDateShort(c.ts));
 
   renderUniversalChart('chart-conns-timeline', {
@@ -2747,7 +3443,7 @@ function renderTrafficPage() {
     defaultColor: PALETTE.emerald
   });
 
-  const traffic = CP_DATA.traffic.hourly;
+  const traffic = filterTimeSeries(CP_DATA.traffic.hourly);
   renderUniversalChart('chart-conn-rate-timeline', {
     labels: traffic.map(t => fmtDateShort(t.ts)),
     datasets: [
@@ -2764,7 +3460,7 @@ function renderTrafficPage() {
 // PAGE 5: DROPS
 // =============================================================================
 function renderDropsPage() {
-  const dropsH = CP_DATA.drops.hourly;
+  const dropsH = filterTimeSeries(CP_DATA.drops.hourly);
   const labels = dropsH.map(d => fmtDateShort(d.ts));
 
   renderUniversalChart('chart-drops-hourly-timeline', {
@@ -2825,8 +3521,8 @@ function renderSpikesPage() {
   if (!CP_DATA || !CP_DATA.spikes) return;
 
   const spikes = CP_DATA.spikes;
-  const cpuSpikes = spikes.cpu_spikes || [];
-  const threadSpikes = spikes.thread_spikes || [];
+  const cpuSpikes = filterTimeSeries(spikes.cpu_spikes || [], 'start_time');
+  const threadSpikes = filterTimeSeries(spikes.thread_spikes || [], 'start_time');
 
   // Determine minimum CPU usage filter
   let minUsage = 0;
@@ -2863,23 +3559,30 @@ function renderSpikesPage() {
   const kpiThread = document.getElementById('kpi-thread-spikes-cnt');
   if (kpiThread) kpiThread.textContent = fmtNum(filteredThreads.length);
 
-  // 1. Chart: Daily Spikes Frequency Timeline (Histogram across dates)
+  // 1. Chart: Spikes Frequency Timeline (Histogram across dates or hours)
+  const isShortRange = (timeRangeState.mode === '1d') || ((timeRangeState.endTs - timeRangeState.startTs) <= 86400 * 2);
   const dailyMap = {};
   filteredCpu.forEach(s => {
     if (s.start_time) {
       const d = new Date(s.start_time * 1000);
-      const dayKey = `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      let dayKey;
+      if (isShortRange) {
+        dayKey = `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')} ${String(d.getUTCHours()).padStart(2, '0')}:00`;
+      } else {
+        dayKey = `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      }
       dailyMap[dayKey] = (dailyMap[dayKey] || 0) + 1;
     }
   });
 
-  const timelineLabels = Object.keys(dailyMap).reverse();
+  const timelineLabels = Object.keys(dailyMap);
+  if (!isShortRange) timelineLabels.reverse();
   const timelineCounts = timelineLabels.map(k => Number(dailyMap[k]) || 0);
 
   renderUniversalChart('chart-spikes-timeline', {
     labels: timelineLabels,
     datasets: [{
-      label: 'Picos de CPU por Día',
+      label: isShortRange ? 'Picos de CPU por Hora' : 'Picos de CPU por Día',
       data: timelineCounts
     }],
     yTitle: 'Nº Eventos de Pico',
@@ -2986,7 +3689,8 @@ function renderSpikesTable() {
   else if (spikesState.severity === 'critical') minUsage = 90;
 
   const query = spikesState.search.toLowerCase();
-  const filtered = CP_DATA.spikes.cpu_spikes.filter(s => {
+  const baseSpikes = filterTimeSeries(CP_DATA.spikes.cpu_spikes || [], 'start_time');
+  const filtered = baseSpikes.filter(s => {
     const matchSearch = !query || s.consumer.toLowerCase().includes(query) || String(s.core).includes(query);
     const matchSeverity = s.avg_usage >= minUsage;
     return matchSearch && matchSeverity;
@@ -3108,7 +3812,7 @@ function renderSecureXLPage() {
     defaultColor: PALETTE.rose
   });
 
-  const ppak = CP_DATA.ppak_vs0.hourly;
+  const ppak = filterTimeSeries(CP_DATA.ppak_vs0.hourly);
   renderUniversalChart('chart-ppak-hourly-timeline', {
     labels: ppak.map(p => fmtDateShort(p.ts)),
     datasets: [
@@ -3131,7 +3835,7 @@ function renderSecureXLPage() {
 // PAGE 9: BLADES & VPN
 // =============================================================================
 function renderBladesPage() {
-  const vpn = CP_DATA.vpn.hourly;
+  const vpn = filterTimeSeries(CP_DATA.vpn.hourly);
   renderUniversalChart('chart-vpn-timeline', {
     labels: vpn.map(v => fmtDateShort(v.ts)),
     datasets: [
@@ -4360,14 +5064,22 @@ function initCustomChartBuilderListeners() {
 function setupEventListeners() {
   setupDiagnosticsEvents();
 
-  // Overview date range buttons
+  // Overview date range buttons (synchronized with global time horizon)
   const ovRangeBtns = document.querySelectorAll('#overview-traffic-range .filter-btn');
   ovRangeBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      ovRangeBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      overviewTrafficDays = parseInt(btn.getAttribute('data-days'), 10) || 30;
-      renderOverviewCharts();
+      const days = parseInt(btn.getAttribute('data-days'), 10) || 30;
+      if (days === 30) setTimeRangeMode('all');
+      else if (days === 7) setTimeRangeMode('1w');
+      else if (days === 14) {
+        if (CP_DATA && CP_DATA.system) {
+          const e = CP_DATA.system.end_timestamp;
+          const s = e - 14 * 86400;
+          const sDate = new Date(s * 1000).toISOString().substring(0, 10);
+          const eDate = new Date(e * 1000).toISOString().substring(0, 10);
+          setTimeRangeMode('custom', sDate, eDate);
+        }
+      }
     });
   });
 

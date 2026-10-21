@@ -8,11 +8,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=15">
+  <link rel="stylesheet" href="styles.css?v=18">
   <!-- Chart.js: try local asset first, fallback to CDN if needed -->
   <script src="assets/chart.umd.min.js"></script>
   <!-- i18n Translation Engine (Spanish, English, Portuguese) -->
-  <script src="i18n.js?v=6"></script>
+  <script src="i18n.js?v=8"></script>
 </head>
 <body>
 
@@ -130,7 +130,7 @@
       </div>
 
       <div class="header-right">
-        <div class="time-range-indicator">
+        <div class="time-range-indicator clickable" id="hdr-timerange-btn" title="Espacio temporal activo / Active time horizon" role="button" tabindex="0">
           <span>📅</span>
           <span id="hdr-timerange">03 Mar 2024 — 02 Abr 2024 (30 días)</span>
         </div>
@@ -343,6 +343,159 @@
         </button>
       </div>
     </header>
+
+    <!-- ======================================================================
+         Global Time Horizon Bar (Synchronized across all sections and main page)
+         ====================================================================== -->
+    <div class="time-horizon-bar" id="global-time-horizon-bar">
+      <!-- Tier 1: Main Presets and Live Time Summary -->
+      <div class="time-horizon-main">
+        <div class="time-horizon-left">
+          <div class="time-horizon-title">
+            <span class="horizon-icon">⏱️</span>
+            <span data-i18n="timerange.label">Espacio Temporal:</span>
+          </div>
+          <div class="filter-btn-group time-btn-group" id="time-horizon-presets">
+            <button class="filter-btn active" data-time-range="all" data-i18n="timerange.all">🌐 Todo (30 Días)</button>
+            <button class="filter-btn" data-time-range="1w" data-i18n="timerange.week">📅 1 Semana</button>
+            <button class="filter-btn" data-time-range="1d" data-i18n="timerange.day">⏱️ 1 Día</button>
+            <button class="filter-btn" data-time-range="custom" data-i18n="timerange.custom">🎯 Personalizado...</button>
+          </div>
+        </div>
+
+        <!-- Active Time Range Summary Chip -->
+        <div class="time-horizon-right">
+          <div class="time-info-chip" id="time-horizon-info-chip">
+            <span class="chip-cal-icon">📅</span>
+            <span id="time-horizon-summary-text">03 Mar 2024 13:40 — 02 Abr 2024 14:28 (30 días)</span>
+            <span class="time-samples-badge" id="time-horizon-samples-text">722 muestras horarias</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tier 2: Dynamic Sub-controls Tray (Visible for Week, Day, and Custom Range) -->
+      <div class="time-horizon-subbar" id="time-horizon-subbar" style="display: none;">
+
+        <!-- 1. Week Selector Panel (visible when '1w') -->
+        <div class="time-subcontrol-panel" id="time-subcontrol-week" style="display: none;">
+          <div class="subcontrol-row">
+            <div class="subcontrol-left">
+              <span class="subcontrol-label">
+                <span class="subcontrol-icon">📅</span>
+                <span data-i18n="timerange.select_week_label">Semana a visualizar:</span>
+              </span>
+              <div class="time-nav-stepper">
+                <button type="button" class="btn-time-step" id="btn-week-prev" data-i18n-title="timerange.prev_week" title="Semana anterior">◀</button>
+                <select id="time-select-week" class="time-select-dropdown" aria-label="Seleccionar semana">
+                  <!-- Populated dynamically via JS -->
+                </select>
+                <button type="button" class="btn-time-step" id="btn-week-next" data-i18n-title="timerange.next_week" title="Semana siguiente">▶</button>
+              </div>
+              <span class="time-range-active-badge" id="week-active-dates-badge">10 Mar — 16 Mar</span>
+            </div>
+            <div class="subcontrol-right">
+              <div class="quick-chip-group" id="week-quick-chips">
+                <button type="button" class="chip-btn" data-week-idx="0" data-i18n="timerange.chip_w1">Sem 1 (03-09 Mar)</button>
+                <button type="button" class="chip-btn chip-alert" data-week-idx="1" data-i18n="timerange.chip_w2">Sem 2 (10-16 Mar) 🚨</button>
+                <button type="button" class="chip-btn" data-week-idx="2" data-i18n="timerange.chip_w3">Sem 3 (17-23 Mar)</button>
+                <button type="button" class="chip-btn" data-week-idx="3" data-i18n="timerange.chip_w4">Sem 4 (24-30 Mar)</button>
+                <button type="button" class="chip-btn" data-week-idx="5" data-i18n="timerange.chip_last7">Últimos 7 días</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Day Selector Panel (visible when '1d') -->
+        <div class="time-subcontrol-panel" id="time-subcontrol-day" style="display: none;">
+          <div class="subcontrol-row">
+            <div class="subcontrol-left">
+              <span class="subcontrol-label">
+                <span class="subcontrol-icon">⏱️</span>
+                <span data-i18n="timerange.select_day_label">Día a visualizar:</span>
+              </span>
+              <div class="time-nav-stepper">
+                <button type="button" class="btn-time-step" id="btn-day-prev" data-i18n-title="timerange.prev_day" title="Día anterior">◀</button>
+                <input type="date" id="time-select-day" class="time-date-input" min="2024-03-03" max="2024-04-02" value="2024-03-13">
+                <button type="button" class="btn-time-step" id="btn-day-next" data-i18n-title="timerange.next_day" title="Día siguiente">▶</button>
+              </div>
+              <span class="time-range-active-badge" id="day-active-name-badge">Miércoles, 13 Mar 2024</span>
+            </div>
+            <div class="subcontrol-right">
+              <div class="quick-chip-group" id="day-quick-chips">
+                <button type="button" class="chip-btn" data-quick-day="2024-03-03" data-i18n="timerange.chip_day_start">📌 Inicio (03 Mar)</button>
+                <button type="button" class="chip-btn chip-alert" data-quick-day="2024-03-13" data-i18n="timerange.chip_day_crit">🚨 Día Crítico (13 Mar)</button>
+                <button type="button" class="chip-btn" data-quick-day="2024-04-02" data-i18n="timerange.chip_day_end">🏁 Final (02 Abr)</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Friendly Custom Range Panel (visible when 'custom') -->
+        <div class="time-subcontrol-panel" id="time-subcontrol-custom" style="display: none;">
+          <div class="subcontrol-row custom-main-row">
+            <!-- Database limits badge -->
+            <div class="db-bounds-indicator">
+              <span class="db-bounds-icon">ℹ️</span>
+              <span class="db-bounds-text">
+                <span data-i18n="timerange.db_bounds_label">Límites de los datos:</span>
+                <strong id="db-bounds-dates">03/03/2024 — 02/04/2024</strong>
+              </span>
+            </div>
+
+            <!-- Inputs with Jump Helpers and Live Duration Badge -->
+            <div class="custom-inputs-group">
+              <div class="date-field">
+                <label for="time-range-start-date" data-i18n="timerange.start_date">Desde:</label>
+                <div class="input-with-jump">
+                  <input type="date" id="time-range-start-date" class="time-date-input" min="2024-03-03" max="2024-04-02" value="2024-03-03">
+                  <button type="button" class="btn-jump-bound" id="btn-jump-start-min" title="Primer día de los datos">Min</button>
+                </div>
+              </div>
+
+              <div class="date-field">
+                <label for="time-range-end-date" data-i18n="timerange.end_date">Hasta:</label>
+                <div class="input-with-jump">
+                  <input type="date" id="time-range-end-date" class="time-date-input" min="2024-03-03" max="2024-04-02" value="2024-04-02">
+                  <button type="button" class="btn-jump-bound" id="btn-jump-end-max" title="Último día de los datos">Max</button>
+                </div>
+              </div>
+
+              <!-- Live duration pill -->
+              <div class="custom-duration-pill" id="custom-live-duration" title="Duración del rango seleccionado">
+                <span class="dur-icon">⏳</span>
+                <span id="custom-duration-text">30 días seleccionados</span>
+              </div>
+
+              <!-- Action buttons -->
+              <div class="custom-actions-group">
+                <button class="btn btn-primary btn-sm" id="btn-apply-time-horizon" data-i18n-title="timerange.apply_btn" title="Aplicar rango personalizado seleccionado">
+                  <span>✓</span> <span data-i18n="timerange.apply">Aplicar</span>
+                </button>
+                <button class="btn btn-secondary btn-sm" id="btn-reset-time-horizon" data-i18n-title="timerange.reset_btn" title="Restablecer al rango completo">
+                  <span>↺</span> <span data-i18n="timerange.reset">Todo</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Shortcuts row inside Custom Range -->
+          <div class="subcontrol-row subcontrol-quick-row">
+            <span class="subcontrol-sublabel">
+              <span class="chip-cal-icon">⚡</span>
+              <span data-i18n="timerange.quick_presets">Atajos:</span>
+            </span>
+            <div class="quick-chip-group" id="custom-quick-chips">
+              <button type="button" class="chip-btn" data-custom-preset="q1" data-i18n="timerange.chip_custom_q1">1ª Quincena (03-17 Mar)</button>
+              <button type="button" class="chip-btn" data-custom-preset="q2" data-i18n="timerange.chip_custom_q2">2ª Quincena (18 Mar-02 Abr)</button>
+              <button type="button" class="chip-btn chip-alert" data-custom-preset="crit" data-i18n="timerange.chip_custom_crit">🚨 Incidente Crítico (11-15 Mar)</button>
+              <button type="button" class="chip-btn" data-custom-preset="last14" data-i18n="timerange.chip_custom_last14">Últimos 14 días</button>
+              <button type="button" class="chip-btn" data-custom-preset="first7" data-i18n="timerange.chip_custom_first7">Primeros 7 días</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
 
     <!-- Main Content Area -->
     <main class="content-area">
@@ -626,7 +779,7 @@
             </div>
             <div style="margin-top: 14px; display: flex; justify-content: space-between; align-items: center; font-size: calc(11.5px * var(--font-scale, 1)); color: var(--text-dim);">
               <span data-i18n="diag.chart_tip">💡 Pasa el cursor por las curvas para inspeccionar la confluencia exacta de métricas en cualquier hora.</span>
-              <span style="font-family: var(--font-mono); color: var(--accent-cyan);" data-i18n="diag.chart_samples">722 muestras horarias correlacionadas</span>
+              <span style="font-family: var(--font-mono); color: var(--accent-cyan);" data-i18n="diag.chart_samples" id="diag-chart-samples-count">722 muestras horarias correlacionadas</span>
             </div>
           </div>
         </div>
@@ -2342,6 +2495,6 @@
     <span id="scale-toast-text">Zoom: 100%</span>
   </div>
 
-  <script src="app.js?v=16"></script>
+  <script src="app.js?v=18"></script>
 </body>
 </html>
