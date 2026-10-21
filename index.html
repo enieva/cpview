@@ -8,11 +8,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=15">
   <!-- Chart.js: try local asset first, fallback to CDN if needed -->
   <script src="assets/chart.umd.min.js"></script>
   <!-- i18n Translation Engine (Spanish, English, Portuguese) -->
-  <script src="i18n.js?v=1"></script>
+  <script src="i18n.js?v=6"></script>
 </head>
 <body>
 
@@ -1634,7 +1634,7 @@
           </div>
           <div class="kpi-card emerald">
             <div class="kpi-header"><span class="kpi-title" data-i18n="flofiler.kpi_rules">Inspección de Reglas</span><div class="kpi-icon">📜</div></div>
-            <div class="kpi-value" 1.13 M</div>
+            <div class="kpi-value">1.13 M</div>
             <div class="kpi-subtext" data-i18n="flofiler.kpi_rules_sub">Ciclos dedicados a Access Rulebase</div>
           </div>
         </div>
@@ -1646,9 +1646,9 @@
                 <h3 class="card-header-title" data-i18n="flofiler.chart_protocols_title"><span>📊</span> Top Protocolos y Servicios por Ciclos de CPU</h3>
                 <div class="chart-controls" data-chart="chart-flofiler-protocols">
                   <div class="filter-btn-group chart-type-group">
-                    <button class="filter-btn active" data-type="line" data-i18n="chartgen.type_line">📈 Línea</button>
+                    <button class="filter-btn" data-type="line" data-i18n="chartgen.type_line">📈 Línea</button>
                     <button class="filter-btn" data-type="bar" data-i18n="chartgen.type_bar">📊 Barras</button>
-                    <button class="filter-btn" data-type="horizontalBar" data-i18n="chartgen.type_horiz">📋 Horiz</button>
+                    <button class="filter-btn active" data-type="horizontalBar" data-i18n="chartgen.type_horiz">📋 Horiz</button>
                   </div>
                   <div class="color-picker-group">
                     <span class="color-dot active" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
@@ -1673,9 +1673,9 @@
                 <h3 class="card-header-title" data-i18n="flofiler.chart_components_title"><span>🧩</span> Top Componentes de Inspección Check Point</h3>
                 <div class="chart-controls" data-chart="chart-flofiler-components">
                   <div class="filter-btn-group chart-type-group">
-                    <button class="filter-btn active" data-type="line" data-i18n="chartgen.type_line">📈 Línea</button>
+                    <button class="filter-btn" data-type="line" data-i18n="chartgen.type_line">📈 Línea</button>
                     <button class="filter-btn" data-type="bar" data-i18n="chartgen.type_bar">📊 Barras</button>
-                    <button class="filter-btn" data-type="horizontalBar" data-i18n="chartgen.type_horiz">📋 Horiz</button>
+                    <button class="filter-btn active" data-type="horizontalBar" data-i18n="chartgen.type_horiz">📋 Horiz</button>
                   </div>
                   <div class="color-picker-group">
                     <span class="color-dot" data-color="#06b6d4" style="background:#06b6d4;" title="Cian"></span>
@@ -2342,6 +2342,6 @@
     <span id="scale-toast-text">Zoom: 100%</span>
   </div>
 
-  <script src="app.js?v=12"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>

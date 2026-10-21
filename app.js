@@ -62,6 +62,20 @@ let chartGenState = {
   processedData: null
 };
 
+// Translation helper
+function t(key, fallback = '', params = {}) {
+  if (window.i18n && typeof window.i18n.t === 'function') {
+    return window.i18n.t(key, fallback, params);
+  }
+  let res = fallback || key;
+  if (params && typeof res === 'string') {
+    Object.keys(params).forEach(k => {
+      res = res.replace(new RegExp(`\\{${k}\\}`, 'g'), params[k]);
+    });
+  }
+  return res;
+}
+
 // Colors
 const PALETTE = {
   cyan: '#06b6d4',
@@ -76,16 +90,21 @@ const PALETTE = {
 };
 
 const COLOR_SWATCHES = [
-  { name: 'Cian', hex: '#06b6d4' },
-  { name: 'Azul', hex: '#3b82f6' },
-  { name: 'Esmeralda', hex: '#10b981' },
-  { name: 'Ámbar', hex: '#f59e0b' },
-  { name: 'Rosa', hex: '#f43f5e' },
-  { name: 'Púrpura', hex: '#8b5cf6' },
-  { name: 'Índigo', hex: '#6366f1' },
-  { name: 'Fucsia', hex: '#ec4899' },
-  { name: 'Gris', hex: '#64748b' }
+  { id: 'cyan', name: 'Cian', hex: '#06b6d4' },
+  { id: 'blue', name: 'Azul', hex: '#3b82f6' },
+  { id: 'emerald', name: 'Esmeralda', hex: '#10b981' },
+  { id: 'amber', name: 'Ámbar', hex: '#f59e0b' },
+  { id: 'rose', name: 'Rosa', hex: '#f43f5e' },
+  { id: 'purple', name: 'Púrpura', hex: '#8b5cf6' },
+  { id: 'indigo', name: 'Índigo', hex: '#6366f1' },
+  { id: 'fuchsia', name: 'Fucsia', hex: '#ec4899' },
+  { id: 'gray', name: 'Gris', hex: '#64748b' }
 ];
+
+function getSwatchColorName(sw) {
+  if (!sw) return '';
+  return t('color.' + (sw.id || 'gray'), sw.name);
+}
 
 const SERIES_DEFAULT_COLORS = [
   '#06b6d4', '#3b82f6', '#10b981', '#f59e0b', '#f43f5e',
@@ -147,6 +166,19 @@ function loadChartCustomState() {
         Object.assign(chartCustomState[k], parsed[k]);
       });
     }
+    // Sanitize categorical ranking charts if they were mistakenly saved as 'line'
+    const categoricalCharts = [
+      'chart-flofiler-protocols',
+      'chart-flofiler-components',
+      'chart-sxl-f2v',
+      'chart-multik-fails',
+      'chart-thread-consumers'
+    ];
+    categoricalCharts.forEach(id => {
+      if (chartCustomState[id] && chartCustomState[id].type === 'line') {
+        chartCustomState[id].type = 'horizontalBar';
+      }
+    });
   } catch (e) {
     console.warn('Could not load chartCustomState from localStorage:', e);
   }
@@ -370,10 +402,10 @@ function syncChartControlsUI(chartId) {
   const isDoughnutSupported = (chartId === 'chart-spikes-cores');
   const typeButtonsHtml = `
     <div class="filter-btn-group chart-type-group">
-      <button class="filter-btn ${st.type === 'line' ? 'active' : ''}" data-type="line" title="Gráfico de Líneas">📈 Línea</button>
-      <button class="filter-btn ${st.type === 'bar' ? 'active' : ''}" data-type="bar" title="Gráfico de Barras Verticales">📊 Barras</button>
-      <button class="filter-btn ${st.type === 'horizontalBar' ? 'active' : ''}" data-type="horizontalBar" title="Gráfico de Barras Horizontales">📋 Horiz</button>
-      ${isDoughnutSupported ? `<button class="filter-btn ${st.type === 'doughnut' ? 'active' : ''}" data-type="doughnut" title="Gráfico de Anillo">🍩 Anillo</button>` : ''}
+      <button class="filter-btn ${st.type === 'line' ? 'active' : ''}" data-type="line" title="${t('chartctrl.title_line', 'Gráfico de Líneas')}">${t('chartctrl.type_line', '📈 Línea')}</button>
+      <button class="filter-btn ${st.type === 'bar' ? 'active' : ''}" data-type="bar" title="${t('chartctrl.title_bar', 'Gráfico de Barras Verticales')}">${t('chartctrl.type_bar', '📊 Barras')}</button>
+      <button class="filter-btn ${st.type === 'horizontalBar' ? 'active' : ''}" data-type="horizontalBar" title="${t('chartctrl.title_horiz', 'Gráfico de Barras Horizontales')}">${t('chartctrl.type_horiz', '📋 Horiz')}</button>
+      ${isDoughnutSupported ? `<button class="filter-btn ${st.type === 'doughnut' ? 'active' : ''}" data-type="doughnut" title="${t('chartctrl.title_doughnut', 'Gráfico de Anillo')}">${t('chartctrl.type_doughnut', '🍩 Anillo')}</button>` : ''}
     </div>
   `;
 
@@ -381,22 +413,31 @@ function syncChartControlsUI(chartId) {
   let seriesControlsHtml = '';
   if (isMulti) {
     const isFg = (activeIdx === st.foregroundIndex);
+    const fgMarkText = t('chartctrl.fg_prefix_select', '⭐ [1º Plano] ');
+    const fgBtnTitle = isFg
+      ? t('chartctrl.btn_fg_title_active', 'Esta muestra ya está en primer plano (al frente)')
+      : t('chartctrl.btn_fg_title_inactive', 'Traer esta muestra al primer plano (al frente)');
+    const fgBtnText = isFg
+      ? t('chartctrl.btn_fg_text_active', 'En Frente')
+      : t('chartctrl.btn_fg_text_inactive', '1º Plano');
+
     seriesControlsHtml = `
       <div class="series-selector-group">
-        <label class="series-label" title="Muestra seleccionada para editar color o plano">Muestra:</label>
-        <select class="series-select" data-chart="${chartId}" title="Selecciona qué estadística o muestra deseas personalizar">
+        <label class="series-label" title="${t('chartctrl.series_label_title', 'Muestra seleccionada para editar color o plano')}">${t('chartctrl.series_label', 'Muestra:')}</label>
+        <select class="series-select" data-chart="${chartId}" title="${t('chartctrl.series_select_title', 'Selecciona qué estadística o muestra deseas personalizar')}">
           ${datasets.map((ds, idx) => {
-            const fgMark = (idx === st.foregroundIndex) ? '⭐ [1º Plano] ' : '';
-            return `<option value="${idx}" ${idx === activeIdx ? 'selected' : ''}>${fgMark}${ds.label || 'Muestra ' + (idx + 1)}</option>`;
+            const fgMark = (idx === st.foregroundIndex) ? fgMarkText : '';
+            const sampleName = ds.label || t('chartctrl.sample_default', `Muestra ${idx + 1}`, { n: idx + 1 });
+            return `<option value="${idx}" ${idx === activeIdx ? 'selected' : ''}>${fgMark}${sampleName}</option>`;
           }).join('')}
         </select>
       </div>
-      <button class="filter-btn btn-foreground ${isFg ? 'active' : ''}" data-chart="${chartId}" title="${isFg ? 'Esta muestra ya está en primer plano (al frente)' : 'Traer esta muestra al primer plano (al frente)'}">
+      <button class="filter-btn btn-foreground ${isFg ? 'active' : ''}" data-chart="${chartId}" title="${fgBtnTitle}">
         <span class="fg-icon">${isFg ? '⭐' : '🔝'}</span>
-        <span class="fg-text">${isFg ? 'En Frente' : '1º Plano'}</span>
+        <span class="fg-text">${fgBtnText}</span>
       </button>
-      <button class="filter-btn btn-manage-series" data-chart="${chartId}" title="Gestionar todas las muestras, primer plano y colores en un panel">
-        <span>🎨 Todas (${datasets.length})</span>
+      <button class="filter-btn btn-manage-series" data-chart="${chartId}" title="${t('chartctrl.btn_manage_title', 'Gestionar todas las muestras, primer plano y colores en un panel')}">
+        <span>${t('chartctrl.btn_manage_text', `🎨 Todas (${datasets.length})`, { count: datasets.length })}</span>
       </button>
     `;
   }
@@ -404,13 +445,14 @@ function syncChartControlsUI(chartId) {
   // Color picker HTML
   const colorDotsHtml = COLOR_SWATCHES.map(sw => {
     const isActive = curColor && curColor.toLowerCase() === sw.hex.toLowerCase();
-    return `<span class="color-dot ${isActive ? 'active' : ''}" data-chart="${chartId}" data-color="${sw.hex}" style="background:${sw.hex};" title="${sw.name} (${sw.hex})"></span>`;
+    const swName = getSwatchColorName(sw);
+    return `<span class="color-dot ${isActive ? 'active' : ''}" data-chart="${chartId}" data-color="${sw.hex}" style="background:${sw.hex};" title="${swName} (${sw.hex})"></span>`;
   }).join('');
 
   const colorPickerHtml = `
     <div class="color-picker-group">
       ${colorDotsHtml}
-      <label class="color-picker-custom" title="Elegir cualquier color personalizado hex">
+      <label class="color-picker-custom" title="${t('chartctrl.custom_color_title', 'Elegir cualquier color personalizado hex')}">
         <input type="color" class="custom-color-input" data-chart="${chartId}" value="${curColor && curColor.startsWith('#') && curColor.length === 7 ? curColor : '#06b6d4'}">
         <span>🎨</span>
       </label>
@@ -509,37 +551,42 @@ function openSeriesManagerPopover(chartId, anchorBtn) {
     popover.innerHTML = `
       <div class="series-popover-header">
         <div class="series-popover-title">
-          <span>🎨</span> Muestras y Estadísticas (${datasets.length})
+          <span>🎨</span> ${t('chartctrl.popover_title', `Muestras y Estadísticas (${datasets.length})`, { count: datasets.length })}
         </div>
-        <button class="btn-close-popover" title="Cerrar">&times;</button>
+        <button class="btn-close-popover" title="${t('chartctrl.btn_close', 'Cerrar')}">&times;</button>
       </div>
       <div class="series-popover-subtitle">
-        Selecciona qué muestra/estadística está en <strong>primer plano</strong> y escoge el color de cada una:
+        ${t('chartctrl.popover_subtitle', 'Selecciona qué muestra/estadística está en <strong>primer plano</strong> y escoge el color de cada una:')}
       </div>
       <div class="series-popover-list">
         ${datasets.map((ds, idx) => {
           const isFg = (idx === st.foregroundIndex);
           const dsColor = st.datasetColors[idx] || (idx === 0 ? st.color : (ds.borderColor || ds.backgroundColor || SERIES_DEFAULT_COLORS[idx % SERIES_DEFAULT_COLORS.length]));
+          const sampleName = ds.label || t('chartctrl.sample_default', `Muestra ${idx + 1}`, { n: idx + 1 });
+          const radioBadgeText = isFg
+            ? t('chartctrl.radio_active', '⭐ Primer Plano')
+            : t('chartctrl.radio_inactive', 'Poner al Frente');
           return `
             <div class="series-row ${isFg ? 'is-foreground' : ''}">
               <div class="series-row-header">
                 <div class="series-row-name">
                   <span class="series-color-preview" style="background:${dsColor};"></span>
-                  <strong>${ds.label || 'Muestra ' + (idx + 1)}</strong>
+                  <strong>${sampleName}</strong>
                 </div>
-                <label class="series-fg-radio-label" title="Poner esta muestra en primer plano (al frente)">
+                <label class="series-fg-radio-label" title="${t('chartctrl.radio_title', 'Poner esta muestra en primer plano (al frente)')}">
                   <input type="radio" name="popover-fg-${chartId}" value="${idx}" ${isFg ? 'checked' : ''}>
                   <span class="fg-radio-badge ${isFg ? 'active' : ''}">
-                    ${isFg ? '⭐ Primer Plano' : 'Poner al Frente'}
+                    ${radioBadgeText}
                   </span>
                 </label>
               </div>
               <div class="series-row-colors">
                 ${COLOR_SWATCHES.map(sw => {
                   const isActive = dsColor && dsColor.toLowerCase() === sw.hex.toLowerCase();
-                  return `<span class="color-dot ${isActive ? 'active' : ''}" data-ds="${idx}" data-color="${sw.hex}" style="background:${sw.hex};" title="${sw.name}"></span>`;
+                  const swName = getSwatchColorName(sw);
+                  return `<span class="color-dot ${isActive ? 'active' : ''}" data-ds="${idx}" data-color="${sw.hex}" style="background:${sw.hex};" title="${swName}"></span>`;
                 }).join('')}
-                <label class="color-picker-custom" title="Color personalizado hex">
+                <label class="color-picker-custom" title="${t('chartctrl.popover_custom_color_title', 'Color personalizado hex')}">
                   <input type="color" data-ds="${idx}" value="${dsColor && dsColor.startsWith('#') && dsColor.length === 7 ? dsColor : '#06b6d4'}">
                   <span>🎨</span>
                 </label>
@@ -549,10 +596,10 @@ function openSeriesManagerPopover(chartId, anchorBtn) {
         }).join('')}
       </div>
       <div class="series-popover-footer">
-        <button class="btn-reset-chart-colors" title="Restaurar colores originales de este gráfico">
-          ↺ Restaurar colores
+        <button class="btn-reset-chart-colors" title="${t('chartctrl.btn_reset_title', 'Restaurar colores originales de este gráfico')}">
+          ${t('chartctrl.btn_reset_text', '↺ Restaurar colores')}
         </button>
-        <button class="btn-done-popover">Listo</button>
+        <button class="btn-done-popover">${t('chartctrl.btn_done', 'Listo')}</button>
       </div>
     `;
 
@@ -754,15 +801,25 @@ function renderUniversalChart(canvasId, config) {
         type: 'linear',
         beginAtZero: true,
         grid: { color: 'rgba(255, 255, 255, 0.05)' },
-        ticks: { color: '#94a3b8' },
+        ticks: {
+          color: '#94a3b8',
+          callback: function(val) {
+            if (Math.abs(val) >= 1e6) return (val / 1e6).toFixed(1) + ' M';
+            if (Math.abs(val) >= 1e3) return (val / 1e3).toFixed(0) + ' k';
+            return val;
+          }
+        },
         title: config.yTitle ? { display: true, text: config.yTitle, color: '#94a3b8' } : undefined
       },
       y: {
         type: 'category',
         grid: { display: false },
-        ticks: { color: '#e2e8f0', autoSkip: true, maxTicksLimit: 25 }
+        ticks: { color: '#e2e8f0', autoSkip: false }
       }
     };
+    if (config.extraOptions && config.extraOptions.scales) {
+      Object.assign(scales, config.extraOptions.scales);
+    }
   } else {
     scales = {
       x: {
@@ -797,10 +854,11 @@ function renderUniversalChart(canvasId, config) {
           color: '#94a3b8',
           generateLabels: function(chart) {
             const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+            const fgSuffix = t('chartctrl.legend_fg_suffix', '(Frente)');
             if (chart.data.datasets.length > 1) {
               original.forEach(item => {
                 if (item.datasetIndex === fgIdx) {
-                  item.text = '⭐ ' + item.text + ' (Frente)';
+                  item.text = '⭐ ' + item.text + ' ' + fgSuffix;
                 }
               });
             }
@@ -825,11 +883,16 @@ function renderUniversalChart(canvasId, config) {
         enabled: true,
         callbacks: {
           label: function(ctx) {
+            if (typeof config.tooltipCallback === 'function') {
+              return config.tooltipCallback(ctx, fgIdx);
+            }
             const isFg = (ctx.datasetIndex === fgIdx);
-            const prefix = isFg && ctx.chart.data.datasets.length > 1 ? '⭐ [1º Plano] ' : '';
+            const fgPrefix = isFg && ctx.chart.data.datasets.length > 1 ? t('chartctrl.fg_prefix_tooltip', '⭐ [1º Plano] ') : '';
             const label = ctx.dataset.label || '';
-            const rawVal = ctx.parsed.y !== undefined ? ctx.parsed.y : ctx.parsed.x;
-            return `${prefix}${label}: ${fmtNum(rawVal)}`;
+            const rawVal = isHoriz
+              ? (ctx.parsed.x !== undefined ? ctx.parsed.x : ctx.raw)
+              : (ctx.parsed.y !== undefined ? ctx.parsed.y : ctx.raw);
+            return `${fgPrefix}${label}: ${fmtNum(rawVal)}`;
           }
         }
       }
@@ -1032,6 +1095,60 @@ function setupThemeSystem() {
     savedTheme = localStorage.getItem('cpview_theme') || 'default';
   } catch (e) {}
   applyTheme(savedTheme, true);
+}
+
+// ============================================================================
+// Language Selector Dropdown System (Spanish, English, Portuguese)
+// ============================================================================
+
+function setupLanguageSystem() {
+  const btn = document.getElementById('btn-lang-selector');
+  const menu = document.getElementById('lang-dropdown-menu');
+
+  if (btn && menu) {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = menu.style.display === 'flex';
+
+      // Close theme menu if open
+      const themeMenu = document.getElementById('theme-dropdown-menu');
+      const themeBtn = document.getElementById('btn-theme-selector');
+      if (themeMenu) themeMenu.style.display = 'none';
+      if (themeBtn) themeBtn.setAttribute('aria-expanded', 'false');
+
+      // Close scale menu if open
+      const scaleMenu = document.getElementById('scale-dropdown-menu');
+      const scaleBtn = document.getElementById('btn-scale-selector');
+      if (scaleMenu) scaleMenu.style.display = 'none';
+      if (scaleBtn) scaleBtn.setAttribute('aria-expanded', 'false');
+
+      menu.style.display = isVisible ? 'none' : 'flex';
+      btn.setAttribute('aria-expanded', !isVisible);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!btn.contains(e.target) && !menu.contains(e.target)) {
+        menu.style.display = 'none';
+        btn.setAttribute('aria-expanded', 'false');
+      }
+    });
+
+    document.querySelectorAll('.lang-option').forEach(opt => {
+      opt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const lang = opt.getAttribute('data-lang');
+        if (lang && window.i18n && typeof window.i18n.setLanguage === 'function') {
+          window.i18n.setLanguage(lang);
+        }
+        menu.style.display = 'none';
+        btn.setAttribute('aria-expanded', 'false');
+      });
+    });
+  }
+
+  if (window.i18n && typeof window.i18n.updateLanguageSelectorUI === 'function') {
+    window.i18n.updateLanguageSelectorUI();
+  }
 }
 
 // ============================================================================
@@ -1362,18 +1479,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   setupThemeSystem();
   setupScalingSystem();
+  setupLanguageSystem();
 
   // Initialize and connect i18n dynamic reactive listener
   if (window.i18n) {
-    if (typeof window.i18n.setupLanguageSystem === 'function') {
-      window.i18n.setupLanguageSystem();
-    }
     window.i18n.onLanguageChange((newLang) => {
       // Invalidate cached analysis so diagnoses and remediations refresh in current language
       if (typeof diagnosticsState !== 'undefined') {
         diagnosticsState.cachedAnalysis = null;
       }
       populateUI();
+      if (typeof closeSeriesManagerPopover === 'function') {
+        closeSeriesManagerPopover();
+      }
+      if (typeof setupUniversalChartControls === 'function') {
+        setupUniversalChartControls();
+      }
       if (typeof activePage !== 'undefined') {
         switchPage(activePage, false);
       }
@@ -1946,9 +2067,10 @@ function renderDiagnosticsChart() {
             padding: 12,
             generateLabels: function(chart) {
               const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+              const fgSuffix = t('chartctrl.legend_fg_suffix', '(Frente)');
               original.forEach(item => {
                 if (item.datasetIndex === fgIdx) {
-                  item.text = '⭐ ' + item.text + ' (Frente)';
+                  item.text = '⭐ ' + item.text + ' ' + fgSuffix;
                 }
               });
               return original;
@@ -1972,7 +2094,7 @@ function renderDiagnosticsChart() {
           callbacks: {
             label: function(ctx) {
               const isFg = (ctx.datasetIndex === fgIdx);
-              const prefix = isFg ? '⭐ [1º Plano] ' : '';
+              const prefix = isFg ? t('chartctrl.fg_prefix_tooltip', '⭐ [1º Plano] ') : '';
               const label = ctx.dataset.label || '';
               const val = ctx.parsed.y;
               if (label.includes('CPU')) return `${prefix}${label}: ${val}%`;
@@ -2847,7 +2969,7 @@ function renderSpikesPage() {
       data: sortedThreads.map(t => t[1])
     }],
     yTitle: 'Picos por Hilo',
-    defaultType: 'line',
+    defaultType: 'horizontalBar',
     defaultColor: PALETTE.purple
   });
 
@@ -2910,28 +3032,51 @@ function renderSpikesTable() {
 // PAGE 7: FLOW PROFILER (Flofiler)
 // =============================================================================
 function renderFlofilerPage() {
-  const protos = CP_DATA.flofiler.protocols.slice(0, 10);
+  if (!CP_DATA || !CP_DATA.flofiler) return;
+
+  const protos = (CP_DATA.flofiler.protocols || []).slice(0, 10);
+  const totalProtoCycles = protos.reduce((sum, p) => sum + (p.cycles || 0), 0) || 1;
+  const protoLabel = window.i18n ? window.i18n.t('flofiler.cycles_label', 'Ciclos de CPU (Centipercent)') : 'Ciclos de CPU (Centipercent)';
+  const protoAxis = window.i18n ? window.i18n.t('flofiler.cycles_axis', 'Ciclos CPU') : 'Ciclos CPU';
+
   renderUniversalChart('chart-flofiler-protocols', {
     labels: protos.map(p => p.protocol),
     datasets: [{
-      label: 'Ciclos de CPU (Centipercent)',
+      label: protoLabel,
       data: protos.map(p => p.cycles)
     }],
-    yTitle: 'Ciclos CPU',
-    defaultType: 'line',
-    defaultColor: PALETTE.cyan
+    yTitle: protoAxis,
+    defaultType: 'horizontalBar',
+    defaultColor: PALETTE.cyan,
+    tooltipCallback: function(ctx) {
+      const p = protos[ctx.dataIndex];
+      if (!p) return `${protoLabel}: ${fmtNum(ctx.raw)}`;
+      const pct = ((p.cycles / totalProtoCycles) * 100).toFixed(1);
+      const millions = (p.cycles / 1e6).toFixed(2);
+      return `${p.protocol}: ${fmtNum(p.cycles)} (${millions}M ciclos, ${pct}%)`;
+    }
   });
 
-  const comps = CP_DATA.flofiler.components.slice(0, 10);
+  const comps = (CP_DATA.flofiler.components || []).slice(0, 10);
+  const totalCompCycles = comps.reduce((sum, c) => sum + (c.cycles || 0), 0) || 1;
+  const compLabel = window.i18n ? window.i18n.t('flofiler.components_label', 'Ciclos por Módulo Inspección') : 'Ciclos por Módulo Inspección';
+
   renderUniversalChart('chart-flofiler-components', {
     labels: comps.map(c => c.component),
     datasets: [{
-      label: 'Ciclos por Módulo Inspección',
+      label: compLabel,
       data: comps.map(c => c.cycles)
     }],
-    yTitle: 'Ciclos CPU',
-    defaultType: 'line',
-    defaultColor: PALETTE.purple
+    yTitle: protoAxis,
+    defaultType: 'horizontalBar',
+    defaultColor: PALETTE.purple,
+    tooltipCallback: function(ctx) {
+      const c = comps[ctx.dataIndex];
+      if (!c) return `${compLabel}: ${fmtNum(ctx.raw)}`;
+      const pct = ((c.cycles / totalCompCycles) * 100).toFixed(1);
+      const millions = (c.cycles / 1e6).toFixed(2);
+      return `${c.component}: ${fmtNum(c.cycles)} (${millions}M ciclos, ${pct}%)`;
+    }
   });
 }
 
@@ -2947,7 +3092,7 @@ function renderSecureXLPage() {
       data: f2v.map(f => f.count)
     }],
     yTitle: 'Paquetes F2V',
-    defaultType: 'line',
+    defaultType: 'horizontalBar',
     defaultColor: PALETTE.cyan
   });
 
@@ -2959,7 +3104,7 @@ function renderSecureXLPage() {
       data: fails.map(f => f.count)
     }],
     yTitle: 'Fallos de Cola',
-    defaultType: 'line',
+    defaultType: 'horizontalBar',
     defaultColor: PALETTE.rose
   });
 

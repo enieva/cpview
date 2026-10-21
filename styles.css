@@ -2595,10 +2595,34 @@ body {
 }
 
 /* Solarized Light Theme Overrides */
-[data-theme="solarized-light"] .scale-dropdown-menu {
+[data-theme="solarized-light"] .scale-dropdown-menu,
+[data-theme="solarized-light"] .lang-dropdown-menu {
   background: #ffffff;
   border-color: #cbd5e1;
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="solarized-light"] .lang-dropdown-header {
+  color: #475569;
+  border-bottom-color: #e2e8f0;
+}
+
+[data-theme="solarized-light"] .lang-option:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+[data-theme="solarized-light"] .lang-option.active {
+  background: rgba(2, 132, 199, 0.12);
+  border-color: #0284c7;
+}
+
+[data-theme="solarized-light"] .lang-option-name {
+  color: #0f172a;
+}
+
+[data-theme="solarized-light"] .lang-option-desc {
+  color: #64748b;
 }
 
 [data-theme="solarized-light"] .scale-step-btn,

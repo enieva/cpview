@@ -20,11 +20,6 @@
       if (saved && SUPPORTED_LANGS.includes(saved)) {
         return saved;
       }
-      // Check browser navigator language
-      const navLang = (navigator.language || navigator.userLanguage || '').toLowerCase();
-      if (navLang.startsWith('pt')) return 'pt';
-      if (navLang.startsWith('en')) return 'en';
-      if (navLang.startsWith('es')) return 'es';
     } catch (e) {}
     return DEFAULT_LANG;
   }
@@ -456,6 +451,9 @@
       'flofiler.kpi_rules_sub': 'Ciclos dedicados a Access Rulebase',
       'flofiler.chart_protocols_title': '<span>📊</span> Top Protocolos y Servicios por Ciclos de CPU',
       'flofiler.chart_components_title': '<span>🧩</span> Top Componentes de Inspección Check Point',
+      'flofiler.cycles_label': 'Ciclos de CPU (Centipercent)',
+      'flofiler.components_label': 'Ciclos por Módulo Inspección',
+      'flofiler.cycles_axis': 'Ciclos CPU',
 
       // SecureXL & CoreXL Page
       'securexl.kpi_status': 'Estado SecureXL',
@@ -674,7 +672,52 @@
       'modal.error_load': 'No se pudieron cargar registros para esta tabla.',
       'db.rows_fetched_count': '{count} filas obtenidas',
       'header.days_suffix': 'días',
-      'sidebar.badge_tables_suffix': 'Tablas'
+      'sidebar.badge_tables_suffix': 'Tablas',
+
+      // Chart Controls & Planes
+      'chartctrl.type_line': '📈 Línea',
+      'chartctrl.title_line': 'Gráfico de Líneas',
+      'chartctrl.type_bar': '📊 Barras',
+      'chartctrl.title_bar': 'Gráfico de Barras Verticales',
+      'chartctrl.type_horiz': '📋 Horiz',
+      'chartctrl.title_horiz': 'Gráfico de Barras Horizontales',
+      'chartctrl.type_doughnut': '🍩 Anillo',
+      'chartctrl.title_doughnut': 'Gráfico de Anillo',
+      'chartctrl.series_label': 'Muestra:',
+      'chartctrl.series_label_title': 'Muestra seleccionada para editar color o plano',
+      'chartctrl.series_select_title': 'Selecciona qué estadística o muestra deseas personalizar',
+      'chartctrl.sample_default': 'Muestra {n}',
+      'chartctrl.fg_prefix_select': '⭐ [1º Plano] ',
+      'chartctrl.fg_prefix_tooltip': '⭐ [1º Plano] ',
+      'chartctrl.legend_fg_suffix': '(Frente)',
+      'chartctrl.btn_fg_title_active': 'Esta muestra ya está en primer plano (al frente)',
+      'chartctrl.btn_fg_title_inactive': 'Traer esta muestra al primer plano (al frente)',
+      'chartctrl.btn_fg_text_active': 'En Frente',
+      'chartctrl.btn_fg_text_inactive': '1º Plano',
+      'chartctrl.btn_manage_title': 'Gestionar todas las muestras, primer plano y colores en un panel',
+      'chartctrl.btn_manage_text': '🎨 Todas ({count})',
+      'chartctrl.custom_color_title': 'Elegir cualquier color personalizado hex',
+      'chartctrl.popover_title': '🎨 Muestras y Estadísticas ({count})',
+      'chartctrl.popover_subtitle': 'Selecciona qué muestra/estadística está en <strong>primer plano</strong> y escoge el color de cada una:',
+      'chartctrl.radio_title': 'Poner esta muestra en primer plano (al frente)',
+      'chartctrl.radio_active': '⭐ Primer Plano',
+      'chartctrl.radio_inactive': 'Poner al Frente',
+      'chartctrl.popover_custom_color_title': 'Color personalizado hex',
+      'chartctrl.btn_reset_title': 'Restaurar colores originales de este gráfico',
+      'chartctrl.btn_reset_text': '↺ Restaurar colores',
+      'chartctrl.btn_done': 'Listo',
+      'chartctrl.btn_close': 'Cerrar',
+
+      // Swatch Colors
+      'color.cyan': 'Cian',
+      'color.blue': 'Azul',
+      'color.emerald': 'Esmeralda',
+      'color.amber': 'Ámbar',
+      'color.rose': 'Rosa',
+      'color.purple': 'Púrpura',
+      'color.indigo': 'Índigo',
+      'color.fuchsia': 'Fucsia',
+      'color.gray': 'Gris'
     },
 
     en: {
@@ -1100,6 +1143,9 @@
       'flofiler.kpi_rules_sub': 'Cycles dedicated to Access Rulebase',
       'flofiler.chart_protocols_title': '<span>📊</span> Top Protocols & Services by CPU Cycles',
       'flofiler.chart_components_title': '<span>🧩</span> Top Check Point Inspection Components',
+      'flofiler.cycles_label': 'CPU Cycles (Centipercent)',
+      'flofiler.components_label': 'Cycles per Inspection Module',
+      'flofiler.cycles_axis': 'CPU Cycles',
 
       // SecureXL & CoreXL Page
       'securexl.kpi_status': 'SecureXL Status',
@@ -1318,7 +1364,52 @@
       'modal.error_load': 'Could not load records for this table.',
       'db.rows_fetched_count': '{count} rows fetched',
       'header.days_suffix': 'days',
-      'sidebar.badge_tables_suffix': 'Tables'
+      'sidebar.badge_tables_suffix': 'Tables',
+
+      // Chart Controls & Planes
+      'chartctrl.type_line': '📈 Line',
+      'chartctrl.title_line': 'Line Chart',
+      'chartctrl.type_bar': '📊 Bars',
+      'chartctrl.title_bar': 'Vertical Bar Chart',
+      'chartctrl.type_horiz': '📋 Horiz',
+      'chartctrl.title_horiz': 'Horizontal Bar Chart',
+      'chartctrl.type_doughnut': '🍩 Donut',
+      'chartctrl.title_doughnut': 'Doughnut Chart',
+      'chartctrl.series_label': 'Sample:',
+      'chartctrl.series_label_title': 'Selected sample to edit color or plane',
+      'chartctrl.series_select_title': 'Select which metric or sample you wish to customize',
+      'chartctrl.sample_default': 'Sample {n}',
+      'chartctrl.fg_prefix_select': '⭐ [Foreground] ',
+      'chartctrl.fg_prefix_tooltip': '⭐ [Foreground] ',
+      'chartctrl.legend_fg_suffix': '(Front)',
+      'chartctrl.btn_fg_title_active': 'This sample is already in foreground (front)',
+      'chartctrl.btn_fg_title_inactive': 'Bring this sample to foreground (front)',
+      'chartctrl.btn_fg_text_active': 'In Front',
+      'chartctrl.btn_fg_text_inactive': 'Foreground',
+      'chartctrl.btn_manage_title': 'Manage all samples, foreground plane, and colors in a panel',
+      'chartctrl.btn_manage_text': '🎨 All ({count})',
+      'chartctrl.custom_color_title': 'Choose any custom hex color',
+      'chartctrl.popover_title': '🎨 Samples & Metrics ({count})',
+      'chartctrl.popover_subtitle': 'Select which sample/metric is in the <strong>foreground</strong> and choose a color for each:',
+      'chartctrl.radio_title': 'Bring this sample to foreground (front)',
+      'chartctrl.radio_active': '⭐ Foreground',
+      'chartctrl.radio_inactive': 'Bring to Front',
+      'chartctrl.popover_custom_color_title': 'Custom hex color',
+      'chartctrl.btn_reset_title': 'Restore original colors for this chart',
+      'chartctrl.btn_reset_text': '↺ Restore colors',
+      'chartctrl.btn_done': 'Done',
+      'chartctrl.btn_close': 'Close',
+
+      // Swatch Colors
+      'color.cyan': 'Cyan',
+      'color.blue': 'Blue',
+      'color.emerald': 'Emerald',
+      'color.amber': 'Amber',
+      'color.rose': 'Rose',
+      'color.purple': 'Purple',
+      'color.indigo': 'Indigo',
+      'color.fuchsia': 'Fuchsia',
+      'color.gray': 'Gray'
     },
 
     pt: {
@@ -1744,6 +1835,9 @@
       'flofiler.kpi_rules_sub': 'Ciclos dedicados à Access Rulebase',
       'flofiler.chart_protocols_title': '<span>📊</span> Top Protocolos e Serviços por Ciclos de CPU',
       'flofiler.chart_components_title': '<span>🧩</span> Top Componentes de Inspeção Check Point',
+      'flofiler.cycles_label': 'Ciclos de CPU (Centipercent)',
+      'flofiler.components_label': 'Ciclos por Módulo de Inspeção',
+      'flofiler.cycles_axis': 'Ciclos CPU',
 
       // SecureXL & CoreXL Page
       'securexl.kpi_status': 'Estado SecureXL',
@@ -1962,7 +2056,52 @@
       'modal.error_load': 'Não foi possível carregar registros para esta tabela.',
       'db.rows_fetched_count': '{count} linhas obtidas',
       'header.days_suffix': 'dias',
-      'sidebar.badge_tables_suffix': 'Tabelas'
+      'sidebar.badge_tables_suffix': 'Tabelas',
+
+      // Chart Controls & Planes
+      'chartctrl.type_line': '📈 Linha',
+      'chartctrl.title_line': 'Gráfico de Linhas',
+      'chartctrl.type_bar': '📊 Barras',
+      'chartctrl.title_bar': 'Gráfico de Barras Verticais',
+      'chartctrl.type_horiz': '📋 Horiz',
+      'chartctrl.title_horiz': 'Gráfico de Barras Horizontais',
+      'chartctrl.type_doughnut': '🍩 Rosca',
+      'chartctrl.title_doughnut': 'Gráfico de Rosca',
+      'chartctrl.series_label': 'Amostra:',
+      'chartctrl.series_label_title': 'Amostra selecionada para editar cor ou plano',
+      'chartctrl.series_select_title': 'Selecione qual métrica ou amostra deseja personalizar',
+      'chartctrl.sample_default': 'Amostra {n}',
+      'chartctrl.fg_prefix_select': '⭐ [1º Plano] ',
+      'chartctrl.fg_prefix_tooltip': '⭐ [1º Plano] ',
+      'chartctrl.legend_fg_suffix': '(Frente)',
+      'chartctrl.btn_fg_title_active': 'Esta amostra já está em primeiro plano (à frente)',
+      'chartctrl.btn_fg_title_inactive': 'Trazer esta amostra para o primeiro plano (à frente)',
+      'chartctrl.btn_fg_text_active': 'Em Frente',
+      'chartctrl.btn_fg_text_inactive': '1º Plano',
+      'chartctrl.btn_manage_title': 'Gerenciar todas as amostras, primeiro plano e cores em um painel',
+      'chartctrl.btn_manage_text': '🎨 Todas ({count})',
+      'chartctrl.custom_color_title': 'Escolher qualquer cor personalizada hex',
+      'chartctrl.popover_title': '🎨 Amostras e Estatísticas ({count})',
+      'chartctrl.popover_subtitle': 'Selecione qual amostra/estatística está em <strong>primeiro plano</strong> e escolha a cor de cada uma:',
+      'chartctrl.radio_title': 'Colocar esta amostra em primeiro plano (à frente)',
+      'chartctrl.radio_active': '⭐ Primeiro Plano',
+      'chartctrl.radio_inactive': 'Pôr à Frente',
+      'chartctrl.popover_custom_color_title': 'Cor personalizada hex',
+      'chartctrl.btn_reset_title': 'Restaurar cores originais deste gráfico',
+      'chartctrl.btn_reset_text': '↺ Restaurar cores',
+      'chartctrl.btn_done': 'Concluído',
+      'chartctrl.btn_close': 'Fechar',
+
+      // Swatch Colors
+      'color.cyan': 'Ciano',
+      'color.blue': 'Azul',
+      'color.emerald': 'Esmeralda',
+      'color.amber': 'Âmbar',
+      'color.rose': 'Rosa',
+      'color.purple': 'Púrpura',
+      'color.indigo': 'Índigo',
+      'color.fuchsia': 'Fúcsia',
+      'color.gray': 'Cinza'
     }
   };
 
@@ -2173,73 +2312,29 @@
     }
   }
 
-  // Setup Language Selector Dropdown Interaction
-  function setupLanguageSystem() {
-    const btn = document.getElementById('btn-lang-selector');
-    const menu = document.getElementById('lang-dropdown-menu');
-
-    if (btn && menu) {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const isVisible = menu.style.display === 'flex';
-
-        // Close other top-header menus if open
-        const themeMenu = document.getElementById('theme-dropdown-menu');
-        const themeBtn = document.getElementById('btn-theme-selector');
-        if (themeMenu) themeMenu.style.display = 'none';
-        if (themeBtn) themeBtn.setAttribute('aria-expanded', 'false');
-
-        const scaleMenu = document.getElementById('scale-dropdown-menu');
-        const scaleBtn = document.getElementById('btn-scale-selector');
-        if (scaleMenu) scaleMenu.style.display = 'none';
-        if (scaleBtn) scaleBtn.setAttribute('aria-expanded', 'false');
-
-        menu.style.display = isVisible ? 'none' : 'flex';
-        btn.setAttribute('aria-expanded', !isVisible);
-      });
-
-      document.addEventListener('click', (e) => {
-        if (!btn.contains(e.target) && !menu.contains(e.target)) {
-          menu.style.display = 'none';
-          btn.setAttribute('aria-expanded', 'false');
-        }
-      });
-
-      document.querySelectorAll('.lang-option').forEach(opt => {
-        opt.addEventListener('click', () => {
-          const lang = opt.getAttribute('data-lang');
-          setLanguage(lang);
-          menu.style.display = 'none';
-          btn.setAttribute('aria-expanded', 'false');
-        });
-      });
-    }
-
-    // Set initial UI state
-    updateLanguageSelectorUI();
-    applyTranslationsToDOM();
-  }
-
   // Expose i18n object globally
   window.i18n = {
     t,
     getCurrentLanguage,
     setLanguage,
     applyTranslationsToDOM,
-    setupLanguageSystem,
+    updateLanguageSelectorUI,
     onLanguageChange,
     I18N
   };
 
-  // Immediate language application on script load
+  // Immediate language tag application on script load
   document.documentElement.lang = currentLang;
 
-  // Run DOM setup as soon as content is ready
+  // Apply translations and language selector text as soon as DOM is ready
+  function initDOMTranslations() {
+    updateLanguageSelectorUI();
+    applyTranslationsToDOM();
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      setupLanguageSystem();
-    });
+    document.addEventListener('DOMContentLoaded', initDOMTranslations);
   } else {
-    setupLanguageSystem();
+    initDOMTranslations();
   }
 })();
