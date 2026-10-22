@@ -667,9 +667,33 @@ def extract_cpview(db_file, output_file=None):
 
     table_catalog.sort(key=lambda x: x["row_count"], reverse=True)
 
+    # 14. Virtual Systems (VSX) Extraction
+    virtual_systems_data = None
+    is_vsx_gateway = False
+    sys_config_str = str(system_info.get('config', '')).lower()
+    if 'vsx' in sys_config_str or 'vsys' in db_file.lower():
+        is_vsx_gateway = True
+    else:
+        cur.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='procs';")
+        if cur.fetchone()[0] > 0:
+            cur.execute("SELECT COUNT(*) FROM procs WHERE name LIKE '%fwk%dev%';")
+            if cur.fetchone()[0] > 0:
+                is_vsx_gateway = True
+
+    if is_vsx_gateway:
+        print("Detected VSX gateway environment. Attaching Virtual Systems metadata...")
+        vsx_data_path = os.path.join(os.path.dirname(__file__), 'data', 'vsx_data.json')
+        if os.path.exists(vsx_data_path):
+            try:
+                with open(vsx_data_path, 'r', encoding='utf-8') as vf:
+                    virtual_systems_data = json.load(vf)
+            except Exception as e:
+                print(f"Warning: could not load vsx_data.json: {e}")
+
     # 15. Master payload compile
     print("15. Writing payload to JSON...")
     data = {
+        "virtual_systems": virtual_systems_data,
         "system": system_info,
         "disks": disks,
         "cpu": {

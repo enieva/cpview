@@ -79,6 +79,11 @@
         <span class="icon">⚡</span>
         <span data-i18n="sidebar.nav_securexl">SecureXL & CoreXL</span>
       </a>
+      <a class="nav-item" data-page="vsx" id="nav-item-vsx">
+        <span class="icon">🛡️</span>
+        <span data-i18n="sidebar.nav_vsx">Sistemas Virtuales (VSX)</span>
+        <span class="nav-badge" id="badge-vsx-count" style="background:rgba(99,102,241,0.25); color:var(--accent-indigo);">6 VS</span>
+      </a>
 
       <div class="nav-section-title" data-i18n="sidebar.sec_blades">Diagnóstico y Blades</div>
       <a class="nav-item" data-page="spikes">
@@ -511,28 +516,26 @@
         <!-- Executive Hero & Health Assessment Banner -->
         <div class="diagnostics-hero">
           <div class="diagnostics-hero-main">
-            <div class="health-score-dial" title="Score de Salud Operacional del Gateway">
+            <div class="health-score-dial" id="health-score-dial" title="Score de Salud Operacional del Gateway">
               <div class="health-score-dial-inner">
-                <span class="health-score-num">72</span>
+                <span class="health-score-num" id="health-score-num">72</span>
                 <span class="health-score-label" data-i18n="diag.hero_score_label">Salud / 100</span>
               </div>
             </div>
             <div class="diagnostics-hero-text">
               <h2 data-i18n="diag.hero_title"><span>🚨</span> Diagnóstico Forense de Problemas y Confluencia Temporal</h2>
-              <p data-i18n="diag.hero_desc">
-                Auditoría automatizada de los datos de rendimiento de CPView (1.34 GB, 722 horas y 126.8M descartes).
-                Se detecta <strong>confluencia crítica de indicadores</strong>: saturación periódica del CoreXL Worker #1, 
-                ráfagas de 396k conexiones/s y más de 5.8 billones de descartes por desbordamiento de cola en SecureXL.
+              <p id="diagnostics-hero-desc" data-i18n="diag.hero_desc">
+                Auditoría automatizada de los datos de rendimiento de CPView.
               </p>
             </div>
           </div>
           <div class="diagnostics-hero-stats">
             <div class="diag-stat-pill crit">
-              <span class="diag-stat-pill-num" data-i18n="diag.pill_crit_num">3 Críticos</span>
+              <span class="diag-stat-pill-num" id="diag-stat-crit" data-i18n="diag.pill_crit_num">3 Críticos</span>
               <span class="diag-stat-pill-label" data-i18n="diag.pill_crit_label">Severidad Alta</span>
             </div>
             <div class="diag-stat-pill high">
-              <span class="diag-stat-pill-num" data-i18n="diag.pill_high_num">4 Altos</span>
+              <span class="diag-stat-pill-num" id="diag-stat-high" data-i18n="diag.pill_high_num">4 Altos</span>
               <span class="diag-stat-pill-label" data-i18n="diag.pill_high_label">Riesgo Operativo</span>
             </div>
             <div class="diag-stat-pill info">
@@ -540,7 +543,7 @@
               <span class="diag-stat-pill-label" data-i18n="diag.pill_slots_label">Franjas Confluentes</span>
             </div>
             <div class="diag-stat-pill">
-              <span class="diag-stat-pill-num" style="color:var(--accent-amber);" data-i18n="diag.pill_cyclic_num">2 Cíclicos</span>
+              <span class="diag-stat-pill-num" id="diag-stat-cyclic" style="color:var(--accent-amber);" data-i18n="diag.pill_cyclic_num">2 Cíclicos</span>
               <span class="diag-stat-pill-label" data-i18n="diag.pill_cyclic_label">Patrones Diarios</span>
             </div>
           </div>
@@ -554,14 +557,14 @@
               <p class="card-header-subtitle" data-i18n="diag.audit_subtitle">Análisis multivariable de cuellos de botella en CPU, colas SecureXL, enlaces de red y descartes</p>
             </div>
             <div style="display:flex; gap:8px;">
-              <span class="pill-badge" style="background:rgba(244,63,94,0.18); color:var(--accent-rose); border:1px solid rgba(244,63,94,0.3);" data-i18n="diag.pill_crit_num">3 Críticos</span>
-              <span class="pill-badge" style="background:rgba(245,158,11,0.18); color:var(--accent-amber); border:1px solid rgba(245,158,11,0.3);" data-i18n="diag.pill_high_num">4 Altos</span>
-              <span class="pill-badge" style="background:rgba(6,182,212,0.18); color:var(--accent-cyan); border:1px solid rgba(6,182,212,0.3);" data-i18n="diag.badge_info">1 Informativo</span>
+              <span class="pill-badge" id="audit-badge-crit" style="background:rgba(244,63,94,0.18); color:var(--accent-rose); border:1px solid rgba(244,63,94,0.3);" data-i18n="diag.pill_crit_num">3 Críticos</span>
+              <span class="pill-badge" id="audit-badge-high" style="background:rgba(245,158,11,0.18); color:var(--accent-amber); border:1px solid rgba(245,158,11,0.3);" data-i18n="diag.pill_high_num">4 Altos</span>
+              <span class="pill-badge" id="audit-badge-info" style="background:rgba(6,182,212,0.18); color:var(--accent-cyan); border:1px solid rgba(6,182,212,0.3);" data-i18n="diag.badge_info">1 Informativo</span>
             </div>
           </div>
 
           <div style="padding: 20px 24px;">
-            <div class="problems-audit-grid">
+            <div class="problems-audit-grid" id="problems-audit-grid">
 
               <!-- Problem 1: CoreXL Imbalance -->
               <div class="problem-audit-card severity-crit">
@@ -1953,6 +1956,371 @@
                 <div class="chart-container">
                   <canvas id="chart-ppak-hourly-timeline"></canvas>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           PAGE: VIRTUAL SYSTEMS (VSX) & FIREWALLS VIRTUALES
+           ==================================================================== -->
+      <section id="page-vsx" class="page-view">
+        <!-- Virtual Systems Selector Bar -->
+        <div class="vs-selector-container">
+          <div class="vs-selector-header">
+            <div class="vs-selector-title">
+              <span class="vs-icon">🛡️</span>
+              <span data-i18n="vsx.selector_label">Seleccionar Sistema Virtual:</span>
+            </div>
+            <div class="vs-selector-meta" id="vs-active-meta">
+              <span class="status-pill active" id="vs-meta-cluster">ClusterXL HA over LS</span>
+              <span class="policy-pill" id="vs-meta-policy">Policy: GW-VSX-PROD</span>
+              <span class="cores-pill" id="vs-meta-cores">32 Cores Físicos</span>
+            </div>
+          </div>
+          <div class="vs-tabs-bar" id="vs-tabs-bar">
+            <button class="vs-tab-pill active" data-vs="all" id="btn-vs-tab-all">
+              <span class="tab-icon">🌐</span>
+              <span class="tab-label" data-i18n="vsx.tab_overview">Vista Global / Comparativa</span>
+              <span class="tab-badge">6 VS</span>
+            </button>
+            <button class="vs-tab-pill" data-vs="0" id="btn-vs-tab-0">
+              <span class="tab-icon">🛡️</span>
+              <span class="tab-label">VS0: Host & Dispatcher</span>
+              <span class="tab-badge host-badge">Host</span>
+            </button>
+            <button class="vs-tab-pill" data-vs="1" id="btn-vs-tab-1">
+              <span class="tab-icon">🔒</span>
+              <span class="tab-label">VS1: DMZ Corporativa</span>
+              <span class="tab-badge">VS1</span>
+            </button>
+            <button class="vs-tab-pill" data-vs="2" id="btn-vs-tab-2">
+              <span class="tab-icon">⚡</span>
+              <span class="tab-label">VS2: Producción Core</span>
+              <span class="tab-badge badge-warning">120% CPU</span>
+            </button>
+            <button class="vs-tab-pill" data-vs="3" id="btn-vs-tab-3">
+              <span class="tab-icon">🤝</span>
+              <span class="tab-label">VS3: Extranet / B2B</span>
+              <span class="tab-badge">VS3</span>
+            </button>
+            <button class="vs-tab-pill" data-vs="4" id="btn-vs-tab-4">
+              <span class="tab-icon">🌐</span>
+              <span class="tab-label">VS4: Web & APIs</span>
+              <span class="tab-badge badge-info">3.4 GB RAM</span>
+            </button>
+            <button class="vs-tab-pill" data-vs="5" id="btn-vs-tab-5">
+              <span class="tab-icon">⚙️</span>
+              <span class="tab-label">VS5: Gestión & OOB</span>
+              <span class="tab-badge">VS5</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Non-VSX Notice Alert (hidden when VSX detected) -->
+        <div id="vsx-not-supported-alert" class="card-panel" style="display:none; border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.06); margin-bottom: 20px;">
+          <div style="display:flex; align-items:center; gap:14px; padding:12px;">
+            <span style="font-size:28px;">⚠️</span>
+            <div>
+              <strong style="color:var(--accent-amber); font-size:15px;" data-i18n="vsx.not_vsx_msg">El nodo cargado actualmente no es un gateway VSX o no tiene firewalls virtuales configurados.</strong>
+              <div style="color:var(--text-muted); font-size:13px; margin-top:4px;">Para examinar el rendimiento por Virtual System, seleccione o cargue la base de datos de un entorno VSX como <code style="color:var(--accent-cyan);">GW_N1-VSYS-CL-ch01-02_20-03-2026_cpview.dat</code> en el menú superior.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================================================================
+             SUB-VIEW 1: VISTA GLOBAL / COMPARATIVA DE TODOS LOS VIRTUAL SYSTEMS
+             ================================================================== -->
+        <div id="vsx-overview-container">
+          <div class="kpi-grid">
+            <div class="kpi-card indigo">
+              <div class="kpi-header">
+                <span class="kpi-title" data-i18n="vsx.kpi_total_vs">Sistemas Virtuales</span>
+                <div class="kpi-icon">🛡️</div>
+              </div>
+              <div class="kpi-value" id="kpi-vsx-count">6 VS</div>
+              <div class="kpi-subtext" data-i18n="vsx.kpi_total_vs_sub">VS0 Host + 5 Firewalls Virtuales</div>
+            </div>
+            <div class="kpi-card cyan">
+              <div class="kpi-header">
+                <span class="kpi-title" data-i18n="vsx.kpi_total_pkts">Paquetes Multi-Queue</span>
+                <div class="kpi-icon">📦</div>
+              </div>
+              <div class="kpi-value" id="kpi-vsx-packets">657.7 B</div>
+              <div class="kpi-subtext" data-i18n="vsx.kpi_total_pkts_sub">Encolado simétrico Multik / F2P</div>
+            </div>
+            <div class="kpi-card emerald">
+              <div class="kpi-header">
+                <span class="kpi-title" data-i18n="vsx.kpi_peak_thru">Throughput Pico Agregado</span>
+                <div class="kpi-icon">🚀</div>
+              </div>
+              <div class="kpi-value" id="kpi-vsx-throughput">8.27 Gbps</div>
+              <div class="kpi-subtext" data-i18n="vsx.kpi_peak_thru_sub">Capacidad acelerada por SecureXL</div>
+            </div>
+            <div class="kpi-card rose">
+              <div class="kpi-header">
+                <span class="kpi-title" data-i18n="vsx.kpi_fails">Descartes de Encolado</span>
+                <div class="kpi-icon">🚫</div>
+              </div>
+              <div class="kpi-value" id="kpi-vsx-fails">926.2 k</div>
+              <div class="kpi-subtext" data-i18n="vsx.kpi_fails_sub">Multik Dispatcher enqueue fails</div>
+            </div>
+          </div>
+
+          <!-- Inventory and Comparison Table Panel -->
+          <div class="card-panel" style="margin-bottom: 24px;">
+            <div class="card-header">
+              <h3 class="card-header-title" data-i18n="vsx.tbl_title">
+                <span>📋</span> Inventario y Rendimiento Comparativo de Virtual Systems
+              </h3>
+              <div style="font-size:12px; color:var(--text-muted);">
+                <span>Maestro SG (32 Cores)</span> • <span style="color:var(--accent-emerald);">ClusterXL Activo</span>
+              </div>
+            </div>
+            <div class="card-body" style="padding: 0;">
+              <div class="table-responsive">
+                <table class="data-table vs-inventory-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 80px;" data-i18n="vsx.col_id">ID / VS</th>
+                      <th data-i18n="vsx.col_name">Nombre y Propósito</th>
+                      <th style="width: 130px;" data-i18n="vsx.col_type">Tipo</th>
+                      <th style="width: 140px;" data-i18n="vsx.col_process">Proceso / Worker</th>
+                      <th style="width: 160px;" data-i18n="vsx.col_cpu">Carga CPU (Med / Pico)</th>
+                      <th style="width: 150px;" data-i18n="vsx.col_mem">Memoria RAM</th>
+                      <th data-i18n="vsx.col_engines">Motores Asignados</th>
+                      <th style="width: 140px; text-align: right;" data-i18n="vsx.col_action">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody id="vsx-inventory-tbody">
+                    <!-- Populated dynamically by app.js -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Comparative Charts Grid -->
+          <div class="charts-grid">
+            <div class="col-6">
+              <div class="card-panel">
+                <div class="card-header">
+                  <h3 class="card-header-title" data-i18n="vsx.chart_cpu_comp_title">
+                    <span>⚡</span> Comparativa de Carga de CPU por Virtual System (%)
+                  </h3>
+                  <div class="chart-controls" data-chart="chart-vsx-cpu-comparison"></div>
+                </div>
+                <div class="card-body">
+                  <div class="chart-container">
+                    <canvas id="chart-vsx-cpu-comparison"></canvas>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-6">
+              <div class="card-panel">
+                <div class="card-header">
+                  <h3 class="card-header-title" data-i18n="vsx.chart_mem_comp_title">
+                    <span>🧠</span> Distribución de Memoria RAM por Virtual System (MB)
+                  </h3>
+                  <div class="chart-controls" data-chart="chart-vsx-mem-comparison"></div>
+                </div>
+                <div class="card-body">
+                  <div class="chart-container">
+                    <canvas id="chart-vsx-mem-comparison"></canvas>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-6">
+              <div class="card-panel">
+                <div class="card-header">
+                  <h3 class="card-header-title" data-i18n="vsx.chart_multik_title">
+                    <span>📦</span> Despacho y Flujo Multi-Queue (Multik Dispatcher)
+                  </h3>
+                  <div class="chart-controls" data-chart="chart-vsx-multik-dispatch"></div>
+                </div>
+                <div class="card-body">
+                  <div class="chart-container">
+                    <canvas id="chart-vsx-multik-dispatch"></canvas>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-6">
+              <div class="card-panel">
+                <div class="card-header">
+                  <h3 class="card-header-title" data-i18n="vsx.chart_fails_title">
+                    <span>🚫</span> Fallos de Cola y Saturación de Buffer (Enqueue Fails)
+                  </h3>
+                  <div class="chart-controls" data-chart="chart-vsx-enqueue-fails"></div>
+                </div>
+                <div class="card-body">
+                  <div class="chart-container">
+                    <canvas id="chart-vsx-enqueue-fails"></canvas>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================================================================
+             SUB-VIEW 2: VISTA INDIVIDUAL DE UN VIRTUAL SYSTEM EN DETALLE
+             ================================================================== -->
+        <div id="vsx-detail-container" style="display: none;">
+          <!-- VS Detail Hero Card -->
+          <div class="card-panel vs-detail-hero-card" style="margin-bottom: 24px;">
+            <div class="vs-detail-header-flex">
+              <div class="vs-detail-icon-wrap" id="vs-detail-icon">🛡️</div>
+              <div class="vs-detail-titles">
+                <div class="vs-detail-title-row">
+                  <h2 class="vs-detail-name" id="vs-detail-title">VS0 (Host VSX Gateway)</h2>
+                  <span class="vs-detail-badge" id="vs-detail-type-badge">VSX Host</span>
+                  <span class="vs-detail-process-badge" id="vs-detail-proc-badge">Process: fwk0_dev_0</span>
+                  <span class="status-pill active" id="vs-detail-state-pill">Activo</span>
+                </div>
+                <p class="vs-detail-description" id="vs-detail-desc">
+                  Descripción del Virtual System...
+                </p>
+              </div>
+              <div class="vs-detail-actions">
+                <button class="btn btn-outline" id="btn-vs-back-to-all" data-i18n="vsx.btn_back">
+                  <span>⬅️</span> Volver a Comparativa Global
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Individual VS Specific KPIs -->
+          <div class="kpi-grid">
+            <div class="kpi-card amber">
+              <div class="kpi-header">
+                <span class="kpi-title" data-i18n="vsx.detail_kpi_cpu">Utilización CPU</span>
+                <div class="kpi-icon">⚡</div>
+              </div>
+              <div class="kpi-value" id="vs-detail-kpi-cpu">86.5%</div>
+              <div class="kpi-subtext" id="vs-detail-kpi-cpu-sub" data-i18n="vsx.detail_kpi_cpu_sub">Proceso worker dedicado</div>
+            </div>
+            <div class="kpi-card purple">
+              <div class="kpi-header">
+                <span class="kpi-title" data-i18n="vsx.detail_kpi_mem">Huella de Memoria RAM</span>
+                <div class="kpi-icon">🧠</div>
+              </div>
+              <div class="kpi-value" id="vs-detail-kpi-ram">8.73 GB</div>
+              <div class="kpi-subtext" id="vs-detail-kpi-ram-sub" data-i18n="vsx.detail_kpi_mem_sub">Buffers y estado de conexiones</div>
+            </div>
+            <div class="kpi-card cyan">
+              <div class="kpi-header">
+                <span class="kpi-title" data-i18n="vsx.detail_kpi_conns">Conexiones Concurrentes</span>
+                <div class="kpi-icon">🔗</div>
+              </div>
+              <div class="kpi-value" id="vs-detail-kpi-conns">8,420</div>
+              <div class="kpi-subtext" id="vs-detail-kpi-conns-sub" data-i18n="vsx.detail_kpi_conns_sub">Sesiones y flujos activos</div>
+            </div>
+            <div class="kpi-card emerald">
+              <div class="kpi-header">
+                <span class="kpi-title" data-i18n="vsx.detail_kpi_throughput">Rendimiento de Red</span>
+                <div class="kpi-icon">🌐</div>
+              </div>
+              <div class="kpi-value" id="vs-detail-kpi-throughput">171.0 Mbps</div>
+              <div class="kpi-subtext" id="vs-detail-kpi-throughput-sub" data-i18n="vsx.detail_kpi_throughput_sub">Tráfico bidireccional medido</div>
+            </div>
+          </div>
+
+          <!-- Individual VS Time-Series Charts (Integrated with Time Horizon filter) -->
+          <div class="charts-grid">
+            <div class="col-6">
+              <div class="card-panel">
+                <div class="card-header">
+                  <h3 class="card-header-title" data-i18n="vsx.chart_timeline_cpu">
+                    <span>📈</span> Evolución Temporal de CPU y RAM del Sistema Virtual
+                  </h3>
+                  <div class="chart-controls" data-chart="chart-vs-detail-timeline-cpu"></div>
+                </div>
+                <div class="card-body">
+                  <div class="chart-container">
+                    <canvas id="chart-vs-detail-timeline-cpu"></canvas>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-6">
+              <div class="card-panel">
+                <div class="card-header">
+                  <h3 class="card-header-title" data-i18n="vsx.chart_timeline_net">
+                    <span>🌐</span> Evolución de Tráfico de Red y Conexiones Concurrentes
+                  </h3>
+                  <div class="chart-controls" data-chart="chart-vs-detail-timeline-net"></div>
+                </div>
+                <div class="card-body">
+                  <div class="chart-container">
+                    <canvas id="chart-vs-detail-timeline-net"></canvas>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Security Blades & Inspection Engines Grid for this VS -->
+          <div class="card-panel" style="margin-bottom: 24px;">
+            <div class="card-header">
+              <h3 class="card-header-title" data-i18n="vsx.blades_title">
+                <span>🛡️</span> Estado de Motores de Seguridad y Aceleración
+              </h3>
+              <div style="font-size:12px; color:var(--text-muted);" id="vs-detail-engines-count">
+                8 Motores Asignados
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="vs-blades-grid" id="vs-detail-blades-grid">
+                <!-- Dynamically populated blade cards -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Network Interfaces and Linked VLANs for this VS -->
+          <div class="card-panel" style="margin-bottom: 24px;">
+            <div class="card-header">
+              <h3 class="card-header-title" data-i18n="vsx.interfaces_title">
+                <span>🔌</span> Interfaces de Red y VLANs Vinculadas
+              </h3>
+            </div>
+            <div class="card-body">
+              <div class="vs-interfaces-pills-wrap" id="vs-detail-interfaces-wrap">
+                <!-- Dynamically populated interfaces -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Detailed Metrics Snapshot Table for this VS -->
+          <div class="card-panel">
+            <div class="card-header">
+              <h3 class="card-header-title" data-i18n="vsx.metrics_tbl_title">
+                <span>📊</span> Registro Detallado de Rendimiento del Virtual System
+              </h3>
+            </div>
+            <div class="card-body" style="padding: 0;">
+              <div class="table-responsive">
+                <table class="data-table vs-metrics-table">
+                  <thead>
+                    <tr>
+                      <th>Parámetro / Métrica</th>
+                      <th>Valor Medido Promedio</th>
+                      <th>Valor Pico Registrado</th>
+                      <th>Unidad / Detalle Técnico</th>
+                      <th>Evaluación de Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody id="vs-detail-metrics-tbody">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
