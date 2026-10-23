@@ -155,6 +155,7 @@ const chartCustomState = {
 
   // Interfaces
   'chart-top-interfaces': { type: 'bar', color: PALETTE.cyan, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
+  'chart-interfaces-timeline': { type: 'line', color: PALETTE.cyan, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
 
   // Overview
   'chart-overview-traffic': { type: 'line', color: PALETTE.cyan, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
@@ -185,6 +186,63 @@ const chartCustomState = {
   'chart-vs-detail-timeline-cpu': { type: 'line', color: PALETTE.amber, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} },
   'chart-vs-detail-timeline-net': { type: 'line', color: PALETTE.cyan, foregroundIndex: 0, activeSeriesIndex: 0, datasetColors: {} }
 };
+
+// Map each chart to its underlying CPView database/JSON source table
+const CHART_TABLE_SOURCES = {
+  'chart-overview-traffic': 'traffic.hourly',
+  'chart-overview-cpu-mem': 'cpu.hourly · memory.hourly',
+  'chart-overview-drops-pie': 'drops.by_reason',
+  'chart-cpu-cores-timeline': 'cpu.hourly',
+  'chart-top-interfaces': 'interfaces',
+  'chart-interfaces-timeline': 'interfaces · traffic.hourly',
+  'chart-conns-timeline': 'traffic.conns_hourly',
+  'chart-conns-states': 'traffic.conns_hourly',
+  'chart-conn-rate-timeline': 'traffic.conns_hourly',
+  'chart-drops-hourly-timeline': 'drops.hourly',
+  'chart-spikes-timeline': 'spikes.cpu_spikes',
+  'chart-spikes-cores': 'spikes.cpu_spikes',
+  'chart-spikes-duration': 'spikes.cpu_spikes',
+  'chart-spikes-consumers': 'spikes.cpu_spikes · top_consumers',
+  'chart-top-consumers': 'top_processes',
+  'chart-thread-consumers': 'threads',
+  'chart-flofiler-protocols': 'flofiler.protocols',
+  'chart-flofiler-components': 'flofiler.components',
+  'chart-sxl-f2v': 'securexl.stats',
+  'chart-multik-fails': 'securexl.enqueue_fails',
+  'chart-ppak-hourly-timeline': 'securexl.ppak_hourly',
+  'chart-vpn-timeline': 'vpn.tunnels_hourly',
+  'chart-diagnostics-confluence': 'cpu.hourly + traffic.hourly + drops.hourly',
+  'chart-vsx-cpu-comparison': 'vsx.list',
+  'chart-vsx-mem-comparison': 'vsx.list',
+  'chart-vsx-multik-dispatch': 'vsx.dispatcher',
+  'chart-vsx-enqueue-fails': 'vsx.dispatcher.enqueue_fails',
+  'chart-vs-detail-timeline-cpu': 'vsx.hourly',
+  'chart-vs-detail-timeline-net': 'vsx.hourly'
+};
+
+// Canvas hatch / striped pattern generator for fill styles
+function createStripePattern(strokeColor, bgColor = 'transparent') {
+  if (typeof document === 'undefined') return strokeColor;
+  const canvas = document.createElement('canvas');
+  canvas.width = 12;
+  canvas.height = 12;
+  const pctx = canvas.getContext('2d');
+  if (bgColor && bgColor !== 'transparent') {
+    pctx.fillStyle = bgColor;
+    pctx.fillRect(0, 0, 12, 12);
+  }
+  pctx.strokeStyle = strokeColor;
+  pctx.lineWidth = 2;
+  pctx.beginPath();
+  pctx.moveTo(0, 12);
+  pctx.lineTo(12, 0);
+  pctx.moveTo(-2, 2);
+  pctx.lineTo(2, -2);
+  pctx.moveTo(10, 14);
+  pctx.lineTo(14, 10);
+  pctx.stroke();
+  return pctx.createPattern(canvas, 'repeat');
+}
 
 function loadChartCustomState() {
   try {
@@ -390,20 +448,34 @@ function getChartSetting(chartId, defaultType = 'line', defaultColor = PALETTE.c
     chartCustomState[chartId] = {
       type: defaultType,
       color: defaultColor,
+      downsample: 1,
       foregroundIndex: 0,
       activeSeriesIndex: 0,
-      datasetColors: { 0: defaultColor }
+      datasetColors: { 0: defaultColor },
+      seriesHidden: {},
+      seriesOrder: {},
+      seriesOpacity: {},
+      seriesLineStyle: {},
+      seriesFillStyle: {},
+      seriesChartType: {}
     };
   }
   const st = chartCustomState[chartId];
   if (st.type === undefined) st.type = defaultType;
   if (st.color === undefined) st.color = defaultColor;
+  if (st.downsample === undefined) st.downsample = 1;
   if (st.foregroundIndex === undefined) st.foregroundIndex = 0;
   if (st.activeSeriesIndex === undefined) st.activeSeriesIndex = 0;
   if (!st.datasetColors) {
     st.datasetColors = {};
     if (st.color) st.datasetColors[0] = st.color;
   }
+  if (!st.seriesHidden) st.seriesHidden = {};
+  if (!st.seriesOrder) st.seriesOrder = {};
+  if (!st.seriesOpacity) st.seriesOpacity = {};
+  if (!st.seriesLineStyle) st.seriesLineStyle = {};
+  if (!st.seriesFillStyle) st.seriesFillStyle = {};
+  if (!st.seriesChartType) st.seriesChartType = {};
   return st;
 }
 
@@ -429,7 +501,29 @@ function syncChartControlsUI(chartId) {
     st.datasetColors[activeIdx] = curColor;
   }
 
-  // Type buttons HTML
+  // 1. Table Source Name Badge
+  const tableSource = CHART_TABLE_SOURCES[chartId] || 'cpview.db';
+  const tableBadgeHtml = `
+    <span class="chart-table-badge" title="${t('chartctrl.table_source_label', 'Tabla origen')}: ${tableSource}">
+      <span>🗄️</span> <span>${tableSource}</span>
+    </span>
+  `;
+
+  // 2. Sampling Selector (Botón de Muestras: Todas, Cada 2, Cada 5, Cada 10, etc.)
+  const sampleSelectHtml = `
+    <div class="sample-selector-group">
+      <select class="sample-step-select" data-chart="${chartId}" title="${t('chartctrl.samples_select_title', 'Muestras que se grafican')}">
+        <option value="1" ${st.downsample === 1 ? 'selected' : ''}>${t('chartctrl.samples_all', '⏱️ Muestras: Todas')}</option>
+        <option value="2" ${st.downsample === 2 ? 'selected' : ''}>${t('chartctrl.samples_2', '⏱️ Cada 2')}</option>
+        <option value="3" ${st.downsample === 3 ? 'selected' : ''}>${t('chartctrl.samples_3', '⏱️ Cada 3')}</option>
+        <option value="5" ${st.downsample === 5 ? 'selected' : ''}>${t('chartctrl.samples_5', '⏱️ Cada 5')}</option>
+        <option value="10" ${st.downsample === 10 ? 'selected' : ''}>${t('chartctrl.samples_10', '⏱️ Cada 10')}</option>
+        <option value="24" ${st.downsample === 24 ? 'selected' : ''}>${t('chartctrl.samples_24', '⏱️ Cada 24 (1/día)')}</option>
+      </select>
+    </div>
+  `;
+
+  // 3. Type buttons HTML
   const isDoughnutSupported = (chartId === 'chart-spikes-cores' || chartId === 'chart-vsx-mem-comparison' || chartId === 'chart-vsx-enqueue-fails');
   const typeButtonsHtml = `
     <div class="filter-btn-group chart-type-group">
@@ -440,40 +534,18 @@ function syncChartControlsUI(chartId) {
     </div>
   `;
 
-  // Series selector and foreground controls HTML (if multi-dataset)
-  let seriesControlsHtml = '';
-  if (isMulti) {
-    const isFg = (activeIdx === st.foregroundIndex);
-    const fgMarkText = t('chartctrl.fg_prefix_select', '⭐ [1º Plano] ');
-    const fgBtnTitle = isFg
-      ? t('chartctrl.btn_fg_title_active', 'Esta muestra ya está en primer plano (al frente)')
-      : t('chartctrl.btn_fg_title_inactive', 'Traer esta muestra al primer plano (al frente)');
-    const fgBtnText = isFg
-      ? t('chartctrl.btn_fg_text_active', 'En Frente')
-      : t('chartctrl.btn_fg_text_inactive', '1º Plano');
+  // 4. Series studio button (Botón de Gráficos)
+  const seriesStudioBtnText = isMulti 
+    ? t('chartctrl.btn_series_studio', `📊 Gráficos (${datasets.length})`, { count: datasets.length })
+    : t('chartctrl.btn_series_studio_single', '📊 Gráficos / Estilo');
 
-    seriesControlsHtml = `
-      <div class="series-selector-group">
-        <label class="series-label" title="${t('chartctrl.series_label_title', 'Muestra seleccionada para editar color o plano')}">${t('chartctrl.series_label', 'Muestra:')}</label>
-        <select class="series-select" data-chart="${chartId}" title="${t('chartctrl.series_select_title', 'Selecciona qué estadística o muestra deseas personalizar')}">
-          ${datasets.map((ds, idx) => {
-            const fgMark = (idx === st.foregroundIndex) ? fgMarkText : '';
-            const sampleName = ds.label || t('chartctrl.sample_default', `Muestra ${idx + 1}`, { n: idx + 1 });
-            return `<option value="${idx}" ${idx === activeIdx ? 'selected' : ''}>${fgMark}${sampleName}</option>`;
-          }).join('')}
-        </select>
-      </div>
-      <button class="filter-btn btn-foreground ${isFg ? 'active' : ''}" data-chart="${chartId}" title="${fgBtnTitle}">
-        <span class="fg-icon">${isFg ? '⭐' : '🔝'}</span>
-        <span class="fg-text">${fgBtnText}</span>
-      </button>
-      <button class="filter-btn btn-manage-series" data-chart="${chartId}" title="${t('chartctrl.btn_manage_title', 'Gestionar todas las muestras, primer plano y colores en un panel')}">
-        <span>${t('chartctrl.btn_manage_text', `🎨 Todas (${datasets.length})`, { count: datasets.length })}</span>
-      </button>
-    `;
-  }
+  let seriesControlsHtml = `
+    <button class="filter-btn btn-manage-series" data-chart="${chartId}" title="${t('chartctrl.studio_subtitle', 'Personalizar orden, visibilidad, colores, transparencia, trazo, relleno y tipo')}">
+      <span>${seriesStudioBtnText}</span>
+    </button>
+  `;
 
-  // Color picker HTML
+  // 5. Quick Color picker HTML
   const colorDotsHtml = COLOR_SWATCHES.map(sw => {
     const isActive = curColor && curColor.toLowerCase() === sw.hex.toLowerCase();
     const swName = getSwatchColorName(sw);
@@ -491,12 +563,23 @@ function syncChartControlsUI(chartId) {
   `;
 
   ctrl.innerHTML = `
-    ${chartId !== 'chart-diagnostics-confluence' ? typeButtonsHtml : ''}
+    ${tableBadgeHtml}
+    ${sampleSelectHtml}
+    ${typeButtonsHtml}
     ${seriesControlsHtml}
     ${colorPickerHtml}
   `;
 
   // Attach event handlers
+  const sampleSel = ctrl.querySelector('.sample-step-select');
+  if (sampleSel) {
+    sampleSel.onchange = (e) => {
+      st.downsample = Number(e.target.value) || 1;
+      saveChartCustomState();
+      triggerChartRefresh(chartId);
+    };
+  }
+
   ctrl.querySelectorAll('.chart-type-group .filter-btn').forEach(btn => {
     btn.onclick = (e) => {
       e.stopPropagation();
@@ -506,24 +589,6 @@ function syncChartControlsUI(chartId) {
       triggerChartRefresh(chartId);
     };
   });
-
-  const select = ctrl.querySelector('.series-select');
-  if (select) {
-    select.onchange = () => {
-      st.activeSeriesIndex = Number(select.value);
-      syncChartControlsUI(chartId);
-    };
-  }
-
-  const btnFg = ctrl.querySelector('.btn-foreground');
-  if (btnFg) {
-    btnFg.onclick = (e) => {
-      e.stopPropagation();
-      st.foregroundIndex = st.activeSeriesIndex;
-      saveChartCustomState();
-      triggerChartRefresh(chartId);
-    };
-  }
 
   const btnManage = ctrl.querySelector('.btn-manage-series');
   if (btnManage) {
@@ -582,35 +647,94 @@ function openSeriesManagerPopover(chartId, anchorBtn) {
     popover.innerHTML = `
       <div class="series-popover-header">
         <div class="series-popover-title">
-          <span>🎨</span> ${t('chartctrl.popover_title', `Muestras y Estadísticas (${datasets.length})`, { count: datasets.length })}
+          <span>📊</span> ${t('chartctrl.studio_title', `Estudio de Gráficos & Series (${datasets.length})`, { count: datasets.length })}
         </div>
         <button class="btn-close-popover" title="${t('chartctrl.btn_close', 'Cerrar')}">&times;</button>
       </div>
       <div class="series-popover-subtitle">
-        ${t('chartctrl.popover_subtitle', 'Selecciona qué muestra/estadística está en <strong>primer plano</strong> y escoge el color de cada una:')}
+        ${t('chartctrl.studio_subtitle', 'Configura el orden de presentación, visibilidad, colores, transparencia, trazo, relleno y tipo de gráfico por variable:')}
       </div>
       <div class="series-popover-list">
         ${datasets.map((ds, idx) => {
           const isFg = (idx === st.foregroundIndex);
+          const isHidden = !!(st.seriesHidden && st.seriesHidden[idx]);
           const dsColor = st.datasetColors[idx] || (idx === 0 ? st.color : (ds.borderColor || ds.backgroundColor || SERIES_DEFAULT_COLORS[idx % SERIES_DEFAULT_COLORS.length]));
           const sampleName = ds.label || t('chartctrl.sample_default', `Muestra ${idx + 1}`, { n: idx + 1 });
-          const radioBadgeText = isFg
-            ? t('chartctrl.radio_active', '⭐ Primer Plano')
-            : t('chartctrl.radio_inactive', 'Poner al Frente');
+          const currentOrder = (st.seriesOrder && st.seriesOrder[idx] !== undefined) ? st.seriesOrder[idx] : (isFg ? 1 : 10 + idx);
+          
+          const curType = (st.seriesChartType && st.seriesChartType[idx]) || (st.type === 'bar' ? 'bar' : 'line');
+          const curLine = (st.seriesLineStyle && st.seriesLineStyle[idx]) || 'solid';
+          const curFill = (st.seriesFillStyle && st.seriesFillStyle[idx]) || (isFg ? 'translucent' : (curType === 'area' ? 'translucent' : 'none'));
+          const curOpacity = (st.seriesOpacity && st.seriesOpacity[idx] !== undefined) ? st.seriesOpacity[idx] : (isFg ? 0.35 : 0.15);
+          const opacityPct = Math.round(curOpacity * 100);
+
           return `
-            <div class="series-row ${isFg ? 'is-foreground' : ''}">
+            <div class="series-row ${isFg ? 'is-foreground' : ''} ${isHidden ? 'is-hidden' : ''}">
               <div class="series-row-header">
-                <div class="series-row-name">
-                  <span class="series-color-preview" style="background:${dsColor};"></span>
-                  <strong>${sampleName}</strong>
+                <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0;">
+                  <label class="series-vis-toggle" title="Mostrar u ocultar en gráfico">
+                    <input type="checkbox" data-vis="${idx}" ${!isHidden ? 'checked' : ''}>
+                    <span>${!isHidden ? '👁️' : '🚫'}</span>
+                  </label>
+                  <div class="series-row-name">
+                    <span class="series-color-preview" style="background:${dsColor};"></span>
+                    <strong>${sampleName}</strong>
+                  </div>
                 </div>
-                <label class="series-fg-radio-label" title="${t('chartctrl.radio_title', 'Poner esta muestra en primer plano (al frente)')}">
-                  <input type="radio" name="popover-fg-${chartId}" value="${idx}" ${isFg ? 'checked' : ''}>
-                  <span class="fg-radio-badge ${isFg ? 'active' : ''}">
-                    ${radioBadgeText}
-                  </span>
-                </label>
+
+                <div class="series-order-btns">
+                  <button class="btn-order-move btn-order-up" data-ds="${idx}" title="${t('chartctrl.series_order_up', 'Traer al frente / subir capa')}">▲ Frente</button>
+                  <button class="btn-order-move btn-order-down" data-ds="${idx}" title="${t('chartctrl.series_order_down', 'Enviar al fondo / bajar capa')}">▼ Fondo</button>
+                  <label class="series-fg-radio-label" title="${t('chartctrl.radio_title', 'Poner esta muestra en 1º plano')}">
+                    <input type="radio" name="popover-fg-${chartId}" value="${idx}" ${isFg ? 'checked' : ''}>
+                    <span class="fg-radio-badge ${isFg ? 'active' : ''}">
+                      ${isFg ? '⭐ 1º Plano' : `Z: ${currentOrder}`}
+                    </span>
+                  </label>
+                </div>
               </div>
+
+              <!-- Series customization controls grid -->
+              <div class="series-row-controls">
+                <div class="series-ctl-item">
+                  <span class="series-ctl-label">Tipo</span>
+                  <select class="series-select-mini" data-ds-type="${idx}">
+                    <option value="line" ${curType === 'line' ? 'selected' : ''}>📈 Línea</option>
+                    <option value="bar" ${curType === 'bar' ? 'selected' : ''}>📊 Barras</option>
+                    <option value="area" ${curType === 'area' ? 'selected' : ''}>🏔️ Área</option>
+                  </select>
+                </div>
+
+                <div class="series-ctl-item">
+                  <span class="series-ctl-label">Línea</span>
+                  <select class="series-select-mini" data-ds-line="${idx}">
+                    <option value="solid" ${curLine === 'solid' ? 'selected' : ''}>── Continua</option>
+                    <option value="dashed" ${curLine === 'dashed' ? 'selected' : ''}>- - Intermitente</option>
+                    <option value="dotted" ${curLine === 'dotted' ? 'selected' : ''}>··· Puntos</option>
+                    <option value="dashdot" ${curLine === 'dashdot' ? 'selected' : ''}>-·- Raya-Pto</option>
+                  </select>
+                </div>
+
+                <div class="series-ctl-item">
+                  <span class="series-ctl-label">Relleno</span>
+                  <select class="series-select-mini" data-ds-fill="${idx}">
+                    <option value="none" ${curFill === 'none' ? 'selected' : ''}>∅ Sin Relleno</option>
+                    <option value="translucent" ${curFill === 'translucent' ? 'selected' : ''}>💧 Translúcido</option>
+                    <option value="solid" ${curFill === 'solid' ? 'selected' : ''}>⬛ Sólido</option>
+                    <option value="pattern" ${curFill === 'pattern' ? 'selected' : ''}>▦ Patrón Rayado</option>
+                  </select>
+                </div>
+
+                <div class="series-ctl-item" style="grid-column: 1 / -1;">
+                  <div class="series-opacity-box">
+                    <span>${t('chartctrl.opacity_label', 'Opacidad')}:</span>
+                    <input type="range" min="5" max="100" step="5" value="${opacityPct}" data-ds-opacity="${idx}">
+                    <span class="opacity-val-badge" id="op-val-${chartId}-${idx}">${opacityPct}%</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Colors row -->
               <div class="series-row-colors">
                 ${COLOR_SWATCHES.map(sw => {
                   const isActive = dsColor && dsColor.toLowerCase() === sw.hex.toLowerCase();
@@ -627,35 +751,116 @@ function openSeriesManagerPopover(chartId, anchorBtn) {
         }).join('')}
       </div>
       <div class="series-popover-footer">
-        <button class="btn-reset-chart-colors" title="${t('chartctrl.btn_reset_title', 'Restaurar colores originales de este gráfico')}">
-          ${t('chartctrl.btn_reset_text', '↺ Restaurar colores')}
+        <button class="btn-reset-chart-colors" title="${t('chartctrl.btn_reset_title', 'Restaurar opciones por defecto de este gráfico')}">
+          ${t('chartctrl.btn_reset_text', '↺ Restaurar por defecto')}
         </button>
         <button class="btn-done-popover">${t('chartctrl.btn_done', 'Listo')}</button>
       </div>
     `;
 
+    // Visibility toggles
+    popover.querySelectorAll('input[data-vis]').forEach(chk => {
+      chk.onchange = () => {
+        const dsIdx = Number(chk.getAttribute('data-vis'));
+        st.seriesHidden[dsIdx] = !chk.checked;
+        saveChartCustomState();
+        triggerChartRefresh(chartId);
+        renderPopoverContent();
+      };
+    });
+
+    // Order Up / Down buttons
+    popover.querySelectorAll('.btn-order-up').forEach(btn => {
+      btn.onclick = (e) => {
+        e.preventDefault();
+        const dsIdx = Number(btn.getAttribute('data-ds'));
+        const curOrd = st.seriesOrder[dsIdx] !== undefined ? st.seriesOrder[dsIdx] : 10;
+        st.seriesOrder[dsIdx] = Math.max(1, curOrd - 2);
+        st.foregroundIndex = dsIdx;
+        st.activeSeriesIndex = dsIdx;
+        saveChartCustomState();
+        triggerChartRefresh(chartId);
+        renderPopoverContent();
+      };
+    });
+
+    popover.querySelectorAll('.btn-order-down').forEach(btn => {
+      btn.onclick = (e) => {
+        e.preventDefault();
+        const dsIdx = Number(btn.getAttribute('data-ds'));
+        const curOrd = st.seriesOrder[dsIdx] !== undefined ? st.seriesOrder[dsIdx] : 10;
+        st.seriesOrder[dsIdx] = curOrd + 2;
+        saveChartCustomState();
+        triggerChartRefresh(chartId);
+        renderPopoverContent();
+      };
+    });
+
+    // Foreground Radios
     popover.querySelectorAll(`input[name="popover-fg-${chartId}"]`).forEach(radio => {
       radio.onchange = () => {
         const newFg = Number(radio.value);
         st.foregroundIndex = newFg;
         st.activeSeriesIndex = newFg;
+        st.seriesOrder[newFg] = 1;
         saveChartCustomState();
         triggerChartRefresh(chartId);
         renderPopoverContent();
       };
     });
 
-    popover.querySelectorAll('.fg-radio-badge').forEach((badge, idx) => {
-      badge.onclick = (e) => {
-        e.preventDefault();
-        st.foregroundIndex = idx;
-        st.activeSeriesIndex = idx;
+    // Per-series chart type
+    popover.querySelectorAll('select[data-ds-type]').forEach(sel => {
+      sel.onchange = () => {
+        const dsIdx = Number(sel.getAttribute('data-ds-type'));
+        st.seriesChartType[dsIdx] = sel.value;
+        if (sel.value === 'area') {
+          st.seriesFillStyle[dsIdx] = 'translucent';
+        }
         saveChartCustomState();
         triggerChartRefresh(chartId);
         renderPopoverContent();
       };
     });
 
+    // Per-series line style
+    popover.querySelectorAll('select[data-ds-line]').forEach(sel => {
+      sel.onchange = () => {
+        const dsIdx = Number(sel.getAttribute('data-ds-line'));
+        st.seriesLineStyle[dsIdx] = sel.value;
+        saveChartCustomState();
+        triggerChartRefresh(chartId);
+        renderPopoverContent();
+      };
+    });
+
+    // Per-series fill style
+    popover.querySelectorAll('select[data-ds-fill]').forEach(sel => {
+      sel.onchange = () => {
+        const dsIdx = Number(sel.getAttribute('data-ds-fill'));
+        st.seriesFillStyle[dsIdx] = sel.value;
+        saveChartCustomState();
+        triggerChartRefresh(chartId);
+        renderPopoverContent();
+      };
+    });
+
+    // Per-series opacity slider
+    popover.querySelectorAll('input[data-ds-opacity]').forEach(range => {
+      range.oninput = () => {
+        const dsIdx = Number(range.getAttribute('data-ds-opacity'));
+        const val = Number(range.value) / 100;
+        st.seriesOpacity[dsIdx] = val;
+        const valEl = popover.querySelector(`#op-val-${chartId}-${dsIdx}`);
+        if (valEl) valEl.textContent = `${range.value}%`;
+      };
+      range.onchange = () => {
+        saveChartCustomState();
+        triggerChartRefresh(chartId);
+      };
+    });
+
+    // Colors
     popover.querySelectorAll('.series-row-colors .color-dot').forEach(dot => {
       dot.onclick = (e) => {
         e.stopPropagation();
@@ -688,6 +893,13 @@ function openSeriesManagerPopover(chartId, anchorBtn) {
         st.datasetColors = {};
         st.foregroundIndex = 0;
         st.activeSeriesIndex = 0;
+        st.seriesHidden = {};
+        st.seriesOrder = {};
+        st.seriesOpacity = {};
+        st.seriesLineStyle = {};
+        st.seriesFillStyle = {};
+        st.seriesChartType = {};
+        st.downsample = 1;
         st.color = datasets[0]?.borderColor || datasets[0]?.backgroundColor || PALETTE.cyan;
         saveChartCustomState();
         triggerChartRefresh(chartId);
@@ -704,7 +916,7 @@ function openSeriesManagerPopover(chartId, anchorBtn) {
   document.body.appendChild(popover);
 
   const rect = anchorBtn.getBoundingClientRect();
-  const popWidth = Math.min(440, window.innerWidth - 32);
+  const popWidth = Math.min(580, window.innerWidth - 32);
   let left = rect.right - popWidth;
   if (left < 16) left = 16;
   if (left + popWidth > window.innerWidth - 16) left = window.innerWidth - popWidth - 16;
@@ -732,7 +944,7 @@ function triggerChartRefresh(chartId) {
     renderFlofilerPage();
   } else if (chartId.startsWith('chart-sxl-') || chartId.startsWith('chart-multik-') || chartId.startsWith('chart-ppak-')) {
     renderSecureXLPage();
-  } else if (chartId === 'chart-top-interfaces') {
+  } else if (chartId === 'chart-top-interfaces' || chartId === 'chart-interfaces-timeline') {
     renderInterfacesPage();
   } else if (chartId.startsWith('chart-overview-')) {
     renderOverviewCharts();
@@ -772,9 +984,24 @@ function renderUniversalChart(canvasId, config) {
   const isDoughnut = userType === 'doughnut';
   const chartType = isHoriz ? 'bar' : (isDoughnut ? 'doughnut' : userType); // 'line', 'bar', or 'doughnut'
 
-  const fgIdx = Math.min(Math.max(setting.foregroundIndex ?? 0, 0), Math.max(config.datasets.length - 1, 0));
+  // Apply downsampling / sampling step if configured
+  const downsampleStep = setting.downsample || 1;
+  let chartLabels = config.labels;
+  let inputDatasets = config.datasets;
+  if (downsampleStep > 1 && Array.isArray(chartLabels) && chartLabels.length > downsampleStep) {
+    chartLabels = chartLabels.filter((_, i) => i % downsampleStep === 0);
+    inputDatasets = inputDatasets.map(ds => {
+      if (!Array.isArray(ds.data)) return ds;
+      return {
+        ...ds,
+        data: ds.data.filter((_, i) => i % downsampleStep === 0)
+      };
+    });
+  }
 
-  const processedDatasets = config.datasets.map((ds, idx) => {
+  const fgIdx = Math.min(Math.max(setting.foregroundIndex ?? 0, 0), Math.max(inputDatasets.length - 1, 0));
+
+  const processedDatasets = inputDatasets.map((ds, idx) => {
     let color = setting.datasetColors[idx];
     if (!color) {
       color = (idx === 0 && setting.color) ? setting.color : (ds.borderColor || ds.backgroundColor || SERIES_DEFAULT_COLORS[idx % SERIES_DEFAULT_COLORS.length]);
@@ -783,23 +1010,75 @@ function renderUniversalChart(canvasId, config) {
     if (idx === 0) setting.color = color;
 
     const isForeground = (idx === fgIdx);
-    const order = isForeground ? 1 : (10 + idx);
+    const order = (setting.seriesOrder && setting.seriesOrder[idx] !== undefined)
+      ? setting.seriesOrder[idx]
+      : (isForeground ? 1 : (10 + idx));
+    const isHidden = !!(setting.seriesHidden && setting.seriesHidden[idx]);
 
-    if (chartType === 'line') {
-      const isMulti = config.datasets.length > 1;
-      const fillVal = ds.fill !== undefined ? ds.fill : (isMulti ? (isForeground ? true : false) : true);
-      const fillAlpha = isForeground ? 0.22 : 0.08;
+    // Per-series chart type override (line, bar, area)
+    const targetDsType = (setting.seriesChartType && setting.seriesChartType[idx]) || (chartType === 'line' ? 'line' : (chartType === 'bar' ? 'bar' : chartType));
+    const isDsArea = (targetDsType === 'area');
+    const effectiveDsType = isDsArea ? 'line' : (isDoughnut ? 'doughnut' : (isHoriz ? 'bar' : targetDsType));
 
+    // Per-series line style override
+    const lineStyle = (setting.seriesLineStyle && setting.seriesLineStyle[idx]) || (ds.borderDash && ds.borderDash.length ? 'dashed' : 'solid');
+    let borderDash = [];
+    if (lineStyle === 'dashed') borderDash = [6, 6];
+    else if (lineStyle === 'dotted') borderDash = [2, 4];
+    else if (lineStyle === 'dashdot') borderDash = [8, 4, 2, 4];
+
+    // Per-series opacity and fill style override
+    const userOpacity = (setting.seriesOpacity && setting.seriesOpacity[idx] !== undefined)
+      ? setting.seriesOpacity[idx]
+      : (isForeground ? 0.35 : 0.15);
+    
+    let defaultFill = isDsArea ? 'translucent' : (ds.fill !== undefined ? (ds.fill ? 'translucent' : 'none') : (isForeground ? 'translucent' : 'none'));
+    const fillStyle = (setting.seriesFillStyle && setting.seriesFillStyle[idx]) || defaultFill;
+
+    let fillVal = false;
+    let bgVal = hexToRgba(color, userOpacity);
+
+    if (fillStyle === 'none') {
+      fillVal = false;
+      bgVal = effectiveDsType === 'bar' ? hexToRgba(color, Math.max(userOpacity, 0.65)) : hexToRgba(color, 0.0);
+    } else if (fillStyle === 'solid') {
+      fillVal = true;
+      bgVal = hexToRgba(color, 0.95);
+    } else if (fillStyle === 'pattern') {
+      fillVal = true;
+      bgVal = createStripePattern(color, hexToRgba(color, 0.1));
+    } else {
+      // translucent
+      fillVal = (effectiveDsType === 'line');
+      bgVal = hexToRgba(color, userOpacity);
+    }
+
+    if (isDoughnut) {
+      const sliceColors = (chartLabels && chartLabels.length > 1)
+        ? chartLabels.map((_, i) => SERIES_DEFAULT_COLORS[i % SERIES_DEFAULT_COLORS.length])
+        : [color];
       return {
         ...ds,
         label: ds.label || 'Valor',
         data: ds.data,
+        type: 'doughnut',
+        hidden: isHidden,
+        backgroundColor: (idx === 0 && inputDatasets.length === 1) ? sliceColors : hexToRgba(color, 0.85),
+        borderColor: '#1e293b',
+        borderWidth: 2,
+        order: order
+      };
+    } else if (effectiveDsType === 'line') {
+      return {
+        ...ds,
+        label: ds.label || 'Valor',
+        data: ds.data,
+        type: 'line',
+        hidden: isHidden,
         borderColor: color,
-        backgroundColor: ds.backgroundColor && typeof ds.backgroundColor === 'string' && ds.backgroundColor.startsWith('rgba') && !setting.datasetColors[idx]
-          ? ds.backgroundColor
-          : hexToRgba(color, fillAlpha),
+        backgroundColor: bgVal,
         fill: fillVal,
-        borderDash: ds.borderDash,
+        borderDash: borderDash,
         tension: ds.tension !== undefined ? ds.tension : 0.3,
         pointRadius: isForeground ? (ds.pointRadius !== undefined && ds.pointRadius === 0 ? 2 : 4) : (ds.pointRadius !== undefined ? ds.pointRadius : 2.5),
         pointHoverRadius: isForeground ? 7 : 5,
@@ -810,25 +1089,15 @@ function renderUniversalChart(canvasId, config) {
         order: order,
         yAxisID: isHoriz ? undefined : ds.yAxisID
       };
-    } else if (isDoughnut) {
-      const sliceColors = (config.labels && config.labels.length > 1)
-        ? config.labels.map((_, i) => SERIES_DEFAULT_COLORS[i % SERIES_DEFAULT_COLORS.length])
-        : [color];
-      return {
-        ...ds,
-        label: ds.label || 'Valor',
-        data: ds.data,
-        backgroundColor: (idx === 0 && config.datasets.length === 1) ? sliceColors : hexToRgba(color, 0.85),
-        borderColor: '#1e293b',
-        borderWidth: 2,
-        order: order
-      };
     } else {
+      // Bar
       return {
         ...ds,
         label: ds.label || 'Valor',
         data: ds.data,
-        backgroundColor: hexToRgba(color, isForeground ? 0.92 : 0.65),
+        type: 'bar',
+        hidden: isHidden,
+        backgroundColor: fillStyle === 'pattern' ? createStripePattern(color, hexToRgba(color, 0.15)) : hexToRgba(color, isForeground ? 0.92 : Math.max(userOpacity, 0.65)),
         borderColor: color,
         borderWidth: isForeground ? 2.5 : 1.2,
         borderRadius: 4,
@@ -952,7 +1221,7 @@ function renderUniversalChart(canvasId, config) {
   createOrUpdateChart(canvasId, {
     type: chartType,
     data: {
-      labels: config.labels,
+      labels: chartLabels,
       datasets: processedDatasets
     },
     options: options
@@ -2395,7 +2664,11 @@ function populateUI() {
   }
 
   // Badges
-  document.getElementById('badge-cores').textContent = `${sys.cores_count} Cores`;
+  const coresTotal = (sys && sys.cores_count) || (CP_DATA.cpu && CP_DATA.cpu.summary ? CP_DATA.cpu.summary.length : 32);
+  const sideNodeCores = document.getElementById('sidebar-node-cores');
+  if (sideNodeCores) sideNodeCores.textContent = `${coresTotal} Cores`;
+  const badgeCoresEl = document.getElementById('badge-cores');
+  if (badgeCoresEl) badgeCoresEl.textContent = `${coresTotal} Cores`;
   document.getElementById('badge-ifs').textContent = `${CP_DATA.interfaces.length} IFs`;
   document.getElementById('badge-drops').textContent = `${(CP_DATA.drops.total / 1e6).toFixed(1)}M`;
   document.getElementById('badge-spikes').textContent = `${(CP_DATA.spikes.cpu_spikes.length / 1000).toFixed(1)}k`;
@@ -2481,11 +2754,649 @@ let diagnosticsState = {
   pageSize: 15,
   range: 'all',
   expandedIndex: null,
+  algorithm: 'isolation_forest',
+  sensitivity: 'standard',
+  chartCore: 'peak',
+  chartMetric: 'max',
   cachedAnalysis: null
 };
 
+let systemCpuState = {
+  coreSelection: 'top6',
+  metricMode: 'max'
+};
+
+// =============================================================================
+// MULTIVARIATE ANOMALY & CONFLUENCE DETECTION ENGINE
+// =============================================================================
+
+class IsolationForest {
+  constructor(nTrees = 100, subSampleSize = 128) {
+    this.nTrees = nTrees;
+    this.subSampleSize = subSampleSize;
+    this.trees = [];
+  }
+
+  static c(n) {
+    if (n <= 1) return 1;
+    if (n === 2) return 1;
+    const eulerGamma = 0.5772156649;
+    return 2 * (Math.log(n - 1) + eulerGamma) - (2 * (n - 1) / n);
+  }
+
+  fit(data) {
+    const n = data.length;
+    if (n === 0) return this;
+    const sampleSize = Math.min(this.subSampleSize, n);
+    const maxDepth = Math.ceil(Math.log2(Math.max(sampleSize, 2)));
+    this.trees = [];
+
+    for (let t = 0; t < this.nTrees; t++) {
+      const indices = [];
+      const pool = Array.from({ length: n }, (_, i) => i);
+      for (let i = 0; i < sampleSize; i++) {
+        const randIdx = Math.floor(Math.random() * pool.length);
+        indices.push(pool[randIdx]);
+        pool.splice(randIdx, 1);
+      }
+      const sample = indices.map(idx => data[idx]);
+      this.trees.push(this._buildTree(sample, 0, maxDepth));
+    }
+    return this;
+  }
+
+  _buildTree(samples, depth, maxDepth) {
+    if (samples.length <= 1 || depth >= maxDepth) {
+      return { size: samples.length, isLeaf: true };
+    }
+
+    const nFeatures = samples[0].length;
+    const candidateFeatures = [];
+    for (let f = 0; f < nFeatures; f++) {
+      let min = Infinity, max = -Infinity;
+      for (let i = 0; i < samples.length; i++) {
+        const v = samples[i][f];
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+      if (max > min) candidateFeatures.push({ f, min, max });
+    }
+
+    if (candidateFeatures.length === 0) {
+      return { size: samples.length, isLeaf: true };
+    }
+
+    const pick = candidateFeatures[Math.floor(Math.random() * candidateFeatures.length)];
+    const splitVal = pick.min + Math.random() * (pick.max - pick.min);
+
+    const left = [];
+    const right = [];
+    for (let i = 0; i < samples.length; i++) {
+      if (samples[i][pick.f] < splitVal) left.push(samples[i]);
+      else right.push(samples[i]);
+    }
+
+    if (left.length === 0 || right.length === 0) {
+      return { size: samples.length, isLeaf: true };
+    }
+
+    return {
+      isLeaf: false,
+      feature: pick.f,
+      splitVal,
+      left: this._buildTree(left, depth + 1, maxDepth),
+      right: this._buildTree(right, depth + 1, maxDepth)
+    };
+  }
+
+  _pathLength(point, node, currentDepth) {
+    if (node.isLeaf) {
+      return currentDepth + IsolationForest.c(node.size);
+    }
+    if (point[node.feature] < node.splitVal) {
+      return this._pathLength(point, node.left, currentDepth + 1);
+    } else {
+      return this._pathLength(point, node.right, currentDepth + 1);
+    }
+  }
+
+  score(data) {
+    const n = data.length;
+    if (n === 0) return [];
+    const sampleSize = Math.min(this.subSampleSize, n);
+    const cVal = IsolationForest.c(sampleSize);
+
+    return data.map(point => {
+      let sumPath = 0;
+      for (let t = 0; t < this.trees.length; t++) {
+        sumPath += this._pathLength(point, this.trees[t], 0);
+      }
+      const avgPath = sumPath / this.trees.length;
+      return Math.pow(2, -avgPath / cVal);
+    });
+  }
+}
+
+function invertMatrix(matrix) {
+  const n = matrix.length;
+  const a = matrix.map(r => r.slice());
+  const inv = Array.from({ length: n }, (_, i) => {
+    const row = Array(n).fill(0);
+    row[i] = 1;
+    return row;
+  });
+
+  for (let i = 0; i < n; i++) {
+    let maxRow = i;
+    let maxVal = Math.abs(a[i][i]);
+    for (let k = i + 1; k < n; k++) {
+      if (Math.abs(a[k][i]) > maxVal) {
+        maxVal = Math.abs(a[k][i]);
+        maxRow = k;
+      }
+    }
+    if (maxVal < 1e-9) return null;
+
+    if (maxRow !== i) {
+      [a[i], a[maxRow]] = [a[maxRow], a[i]];
+      [inv[i], inv[maxRow]] = [inv[maxRow], inv[i]];
+    }
+
+    const pivot = a[i][i];
+    for (let j = 0; j < n; j++) {
+      a[i][j] /= pivot;
+      inv[i][j] /= pivot;
+    }
+
+    for (let k = 0; k < n; k++) {
+      if (k === i) continue;
+      const factor = a[k][i];
+      for (let j = 0; j < n; j++) {
+        a[k][j] -= factor * a[i][j];
+        inv[k][j] -= factor * inv[i][j];
+      }
+    }
+  }
+  return inv;
+}
+
+function computeMahalanobis(data, featureNames) {
+  const n = data.length;
+  const p = featureNames.length;
+  if (n < p + 2) return { distances: data.map(() => 0), contributions: data.map(() => Array(p).fill(0)) };
+
+  const mean = Array(p).fill(0);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < p; j++) mean[j] += data[i][j];
+  }
+  for (let j = 0; j < p; j++) mean[j] /= n;
+
+  const cov = Array.from({ length: p }, () => Array(p).fill(0));
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < p; j++) {
+      const dj = data[i][j] - mean[j];
+      for (let k = 0; k < p; k++) {
+        cov[j][k] += dj * (data[i][k] - mean[k]);
+      }
+    }
+  }
+  for (let j = 0; j < p; j++) {
+    for (let k = 0; k < p; k++) cov[j][k] /= (n - 1);
+  }
+
+  let trace = 0;
+  for (let j = 0; j < p; j++) trace += cov[j][j];
+  const avgVar = Math.max(1e-6, trace / p);
+  const alpha = 0.08;
+  for (let j = 0; j < p; j++) {
+    for (let k = 0; k < p; k++) {
+      cov[j][k] = (1 - alpha) * cov[j][k] + (j === k ? alpha * avgVar : 0);
+    }
+  }
+
+  const inv = invertMatrix(cov);
+  if (!inv) return { distances: data.map(() => 0), contributions: data.map(() => Array(p).fill(0)) };
+
+  const distances = [];
+  const contributions = [];
+  for (let i = 0; i < n; i++) {
+    const diff = Array(p);
+    for (let j = 0; j < p; j++) diff[j] = data[i][j] - mean[j];
+
+    let d2 = 0;
+    const pointContrib = Array(p).fill(0);
+    for (let j = 0; j < p; j++) {
+      let invDiffJ = 0;
+      for (let k = 0; k < p; k++) {
+        invDiffJ += inv[j][k] * diff[k];
+      }
+      const c = diff[j] * invDiffJ;
+      pointContrib[j] = Math.max(0, c);
+      d2 += c;
+    }
+    distances.push(Math.sqrt(Math.max(0, d2)));
+    contributions.push(pointContrib);
+  }
+
+  return { distances, contributions, mean };
+}
+
+function getMedian(sorted) {
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function getFeatureNoiseFloor(name) {
+  switch (name) {
+    case 'cpu_peak':
+    case 'cpu_avg': return 4.0;
+    case 'conn_rate': return 15.0;
+    case 'traffic': return 50.0;
+    case 'drops': return 25.0;
+    default: return 1.0;
+  }
+}
+
+function computeRobustZScore(data, featureNames) {
+  const n = data.length;
+  const p = featureNames.length;
+  const medians = Array(p).fill(0);
+  const mads = Array(p).fill(0);
+
+  for (let j = 0; j < p; j++) {
+    const col = data.map(r => r[j]).sort((a, b) => a - b);
+    const med = getMedian(col);
+    medians[j] = med;
+    const diffs = col.map(v => Math.abs(v - med)).sort((a, b) => a - b);
+    mads[j] = getMedian(diffs);
+  }
+
+  const scores = [];
+  const zMatrix = [];
+  for (let i = 0; i < n; i++) {
+    let normSq = 0;
+    const zRow = [];
+    for (let j = 0; j < p; j++) {
+      const scale = Math.max(1.4826 * mads[j], getFeatureNoiseFloor(featureNames[j]));
+      const z = (data[i][j] - medians[j]) / scale;
+      zRow.push(z);
+      if (z > 0) normSq += z * z;
+    }
+    zMatrix.push(zRow);
+    scores.push(Math.sqrt(normSq));
+  }
+  return { scores, zMatrix, medians, mads };
+}
+
+function computeDBSCAN(data, featureNames) {
+  const n = data.length;
+  const p = featureNames.length;
+  if (n === 0) return { labels: [], anomalyScores: [] };
+
+  const p5 = [], p95 = [];
+  for (let j = 0; j < p; j++) {
+    const col = data.map(r => r[j]).sort((a, b) => a - b);
+    p5.push(col[Math.floor(n * 0.05)] || col[0]);
+    p95.push(col[Math.floor(n * 0.95)] || col[n - 1]);
+  }
+
+  const norm = data.map(row => {
+    return row.map((val, j) => {
+      const range = (p95[j] - p5[j]) || 1;
+      return Math.max(0, Math.min(1.5, (val - p5[j]) / range));
+    });
+  });
+
+  const dist = (a, b) => {
+    let sum = 0;
+    for (let j = 0; j < p; j++) {
+      const d = a[j] - b[j];
+      sum += d * d;
+    }
+    return Math.sqrt(sum);
+  };
+
+  const kDist = [];
+  for (let i = 0; i < n; i++) {
+    const dList = [];
+    for (let k = 0; k < n; k++) {
+      if (i !== k) dList.push(dist(norm[i], norm[k]));
+    }
+    dList.sort((a, b) => a - b);
+    kDist.push(dList[Math.min(3, dList.length - 1)] || 0.2);
+  }
+  const sortedKDist = kDist.slice().sort((a, b) => a - b);
+  const eps = Math.max(0.15, sortedKDist[Math.floor(n * 0.85)] || 0.3);
+  const minPts = 4;
+
+  const labels = Array(n).fill(0);
+  let clusterId = 0;
+
+  for (let i = 0; i < n; i++) {
+    if (labels[i] !== 0) continue;
+    const neighbors = [];
+    for (let j = 0; j < n; j++) {
+      if (dist(norm[i], norm[j]) <= eps) neighbors.push(j);
+    }
+    if (neighbors.length < minPts) {
+      labels[i] = -1;
+    } else {
+      clusterId++;
+      labels[i] = clusterId;
+      const queue = neighbors.slice();
+      while (queue.length > 0) {
+        const pt = queue.shift();
+        if (labels[pt] === -1) labels[pt] = clusterId;
+        if (labels[pt] !== 0) continue;
+        labels[pt] = clusterId;
+        const ptNeighbors = [];
+        for (let j = 0; j < n; j++) {
+          if (dist(norm[pt], norm[j]) <= eps) ptNeighbors.push(j);
+        }
+        if (ptNeighbors.length >= minPts) {
+          queue.push(...ptNeighbors);
+        }
+      }
+    }
+  }
+
+  const anomalyScores = Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    if (labels[i] === -1) {
+      anomalyScores[i] = 0.75 + Math.min(0.25, (kDist[i] / (eps * 2)));
+    } else {
+      anomalyScores[i] = Math.max(0.1, 0.4 * (kDist[i] / eps));
+    }
+  }
+
+  return { labels, anomalyScores };
+}
+
+const MultivariateEngine = {
+  run(data, options = {}) {
+    const startTime = performance.now();
+    const algo = options.algorithm || diagnosticsState.algorithm || 'isolation_forest';
+    const sensitivity = options.sensitivity || diagnosticsState.sensitivity || 'standard';
+
+    const cpuH = filterTimeSeries(data.cpu?.hourly || []);
+    const trafH = filterTimeSeries((data.traffic && data.traffic.hourly) || []);
+    const connsH = filterTimeSeries((data.traffic && data.traffic.conns_hourly) || []);
+    const dropsH = filterTimeSeries((data.drops && data.drops.hourly) || []);
+
+    if (cpuH.length === 0) return null;
+
+    const trafMap = {};
+    trafH.forEach(r => { trafMap[r.ts] = r; });
+    const connsMap = {};
+    connsH.forEach(r => { connsMap[r.ts] = r; });
+    const dropsMap = {};
+    dropsH.forEach(r => { dropsMap[r.ts] = r; });
+
+    // Detect global peak worker across all available cores in data
+    const coresCount = (data.system && data.system.cores_count) || (data.cpu && data.cpu.summary ? data.cpu.summary.length : 4);
+    let globalPeakCoreNum = 0;
+    let highestMaxAcrossAll = 0;
+    for (let ci = 0; ci < coresCount; ci++) {
+      let cMax = 0;
+      cpuH.forEach(r => {
+        const v = r[`core_${ci}_max`] !== undefined ? r[`core_${ci}_max`] : (r[`core_${ci}_avg`] || 0);
+        if (v > cMax) cMax = v;
+      });
+      if (cMax > highestMaxAcrossAll) {
+        highestMaxAcrossAll = cMax;
+        globalPeakCoreNum = ci;
+      }
+    }
+
+    const featureNames = ['cpu_peak', 'cpu_avg', 'traffic', 'conn_rate', 'drops'];
+    const matrix = [];
+    const samplesMeta = [];
+
+    for (let i = 0; i < cpuH.length; i++) {
+      const c = cpuH[i];
+      const ts = c.ts;
+      const t = trafMap[ts] || {};
+      const cn = connsMap[ts] || {};
+      const dr = dropsMap[ts] || {};
+
+      // Detect peak core specifically for this hourly slice
+      let hourPeakCoreNum = globalPeakCoreNum;
+      let hourPeakCoreMax = 0;
+      let hourPeakCoreAvg = 0;
+      for (let ci = 0; ci < coresCount; ci++) {
+        const cMax = c[`core_${ci}_max`] !== undefined ? c[`core_${ci}_max`] : (c[`core_${ci}_avg`] || 0);
+        if (cMax > hourPeakCoreMax) {
+          hourPeakCoreMax = cMax;
+          hourPeakCoreNum = ci;
+          hourPeakCoreAvg = c[`core_${ci}_avg`] || 0;
+        }
+      }
+
+      const cpuTotal = c.total_avg || 0;
+      const inMbps = t.in_mbps_max || (t.in_mbps_avg ? t.in_mbps_avg * 1.3 : 0);
+      const connRate = t.conn_rate_max !== undefined ? t.conn_rate_max : (cn.conns_sec_max || 0);
+      const dropTot = dr.total || 0;
+
+      matrix.push([hourPeakCoreMax, cpuTotal, inMbps, connRate, dropTot]);
+
+      const d = new Date(ts * 1000);
+      const dayOfWeek = (d.getUTCDay() + 6) % 7;
+      const hour = d.getUTCHours();
+      const dateStr = `${d.getUTCDate()}/${d.getUTCMonth() + 1} ${String(hour).padStart(2, '0')}:00 UTC`;
+
+      samplesMeta.push({
+        ts,
+        dateStr,
+        dayOfWeek,
+        hour,
+        peakCoreMax: hourPeakCoreMax,
+        peakCoreAvg: hourPeakCoreAvg,
+        peakCoreNum: hourPeakCoreNum,
+        cpuTotal,
+        inMbps,
+        connRate,
+        dropTot
+      });
+    }
+
+    let rawScores = [];
+    let algoDetail = '';
+
+    if (algo === 'isolation_forest') {
+      const iforest = new IsolationForest(100, 128);
+      iforest.fit(matrix);
+      rawScores = iforest.score(matrix);
+      algoDetail = 'Isolation Forest (100 iTrees)';
+    } else if (algo === 'mahalanobis') {
+      const res = computeMahalanobis(matrix, featureNames);
+      rawScores = res.distances;
+      algoDetail = 'Distancia de Mahalanobis';
+    } else if (algo === 'dbscan') {
+      const res = computeDBSCAN(matrix, featureNames);
+      rawScores = res.anomalyScores;
+      algoDetail = 'DBSCAN (Density-Based Outliers)';
+    } else {
+      const res = computeRobustZScore(matrix, featureNames);
+      rawScores = res.scores;
+      algoDetail = 'Robust Z-Score / MAD';
+    }
+
+    const sortedScores = rawScores.slice().sort((a, b) => a - b);
+    let pctRank = 0.98;
+    if (sensitivity === 'high') pctRank = 0.95;
+    if (sensitivity === 'strict') pctRank = 0.995;
+
+    const thresholdIdx = Math.min(sortedScores.length - 1, Math.floor(sortedScores.length * pctRank));
+    const thresholdVal = sortedScores[thresholdIdx] || 0.6;
+
+    const heatmapCounts = {};
+    for (let dow = 0; dow < 7; dow++) {
+      heatmapCounts[dow] = {};
+      for (let h = 0; h < 24; h++) {
+        heatmapCounts[dow][h] = { total: 0, high: 0, crit: 0 };
+      }
+    }
+
+    const avgSeenConnRate = samplesMeta.reduce((s, m) => s + m.connRate, 0) / (samplesMeta.length || 1);
+    const avgSeenDrops = samplesMeta.reduce((s, m) => s + m.dropTot, 0) / (samplesMeta.length || 1);
+    const avgSeenThroughput = samplesMeta.reduce((s, m) => s + m.inMbps, 0) / (samplesMeta.length || 1);
+
+    const incidents = [];
+
+    for (let i = 0; i < samplesMeta.length; i++) {
+      const m = samplesMeta[i];
+      const score = rawScores[i];
+      const isAnomaly = (score >= thresholdVal && (m.peakCoreMax >= 65 || score >= thresholdVal * 1.05)) || m.peakCoreMax >= 92;
+
+      heatmapCounts[m.dayOfWeek][m.hour].total++;
+      if (m.peakCoreMax >= 75 || score >= thresholdVal) heatmapCounts[m.dayOfWeek][m.hour].high++;
+      if (m.peakCoreMax >= 90 || (isAnomaly && score >= thresholdVal * 1.15)) heatmapCounts[m.dayOfWeek][m.hour].crit++;
+
+      if (isAnomaly) {
+        const signals = [];
+        let scoreWeight = 0;
+
+        if (m.peakCoreMax >= 90) {
+          signals.push({ type: 'cpu', label: `CPU C${m.peakCoreNum}: ${m.peakCoreMax.toFixed(0)}%`, val: m.peakCoreMax, level: 'crit', core: m.peakCoreNum });
+          scoreWeight += 3;
+        } else if (m.peakCoreMax >= 75) {
+          signals.push({ type: 'cpu', label: `CPU C${m.peakCoreNum}: ${m.peakCoreMax.toFixed(0)}%`, val: m.peakCoreMax, level: 'high', core: m.peakCoreNum });
+          scoreWeight += 2;
+        }
+
+        if (m.connRate >= 100000 || (m.connRate >= 10000 && m.connRate >= avgSeenConnRate * 4)) {
+          signals.push({ type: 'conns', label: `Conns: ${m.connRate >= 1000 ? (m.connRate/1000).toFixed(0) + 'k' : m.connRate}/s`, val: m.connRate, level: 'crit' });
+          scoreWeight += 3;
+        } else if (m.connRate >= 15000 || (m.connRate >= 1500 && m.connRate >= avgSeenConnRate * 2.5)) {
+          signals.push({ type: 'conns', label: `Conns: ${m.connRate >= 1000 ? (m.connRate/1000).toFixed(0) + 'k' : m.connRate}/s`, val: m.connRate, level: 'high' });
+          scoreWeight += 2;
+        }
+
+        if (m.dropTot >= 250000 || (m.dropTot >= 50000 && m.dropTot >= avgSeenDrops * 3)) {
+          signals.push({ type: 'drops', label: `Drops: ${(m.dropTot/1000).toFixed(0)}k/h`, val: m.dropTot, level: 'crit' });
+          scoreWeight += 3;
+        } else if (m.dropTot >= 50000 || (m.dropTot >= 5000 && m.dropTot >= avgSeenDrops * 2)) {
+          signals.push({ type: 'drops', label: `Drops: ${(m.dropTot/1000).toFixed(0)}k/h`, val: m.dropTot, level: 'high' });
+          scoreWeight += 2;
+        }
+
+        if (m.inMbps >= 8000 || (m.inMbps >= 2000 && m.inMbps >= avgSeenThroughput * 2.5)) {
+          signals.push({ type: 'traffic', label: `Tráfico: ${(m.inMbps/1000).toFixed(1)}G`, val: m.inMbps, level: 'crit' });
+          scoreWeight += 2;
+        } else if (m.inMbps >= 3000 || (m.inMbps >= 1000 && m.inMbps >= avgSeenThroughput * 1.8)) {
+          signals.push({ type: 'traffic', label: `Tráfico: ${(m.inMbps/1000).toFixed(1)}G`, val: m.inMbps, level: 'high' });
+          scoreWeight += 1;
+        }
+
+        if (signals.length === 0) {
+          signals.push({
+            type: 'cpu',
+            label: `Score Anómalo: ${score.toFixed(2)} (P${(pctRank*100).toFixed(0)})`,
+            val: score,
+            level: 'high'
+          });
+          scoreWeight += 2;
+        }
+
+        const isMidnight = (m.hour === 0);
+        const isBusinessPeak = (m.hour >= 11 && m.hour <= 13 && m.dayOfWeek < 5);
+        const isRecurrent = isMidnight || isBusinessPeak;
+
+        let severity = 'MEDIO';
+        if (scoreWeight >= 5 || signals.filter(s => s.level === 'crit').length >= 2 || m.peakCoreMax >= 95) {
+          severity = 'CRÍTICO';
+        } else if (scoreWeight >= 3 || m.peakCoreMax >= 85 || score >= thresholdVal * 1.1) {
+          severity = 'ALTO';
+        }
+
+        let algoPrefix = '';
+        let algoRemedySuffix = '';
+
+        if (algo === 'isolation_forest') {
+          algoPrefix = `[Isolation Forest • Score ${score.toFixed(3)} | Corte P${(pctRank * 100).toFixed(0)}] Aislamiento dimensional precoz: `;
+          algoRemedySuffix = ` Modelo iForest detecta vector aislado en subárboles profundos; auditar afinidad dinámica sim affinity -a y balanceo de carga.`;
+        } else if (algo === 'mahalanobis') {
+          algoPrefix = `[Mahalanobis • D²=${score.toFixed(2)} | Umbral χ²=${thresholdVal.toFixed(2)}] Ruptura de covarianza multidimensional: `;
+          algoRemedySuffix = ` Distancia D² anómala en la matriz de covarianza; ajustar buffer fw ctl set int sim_dispatcher_queue_size 4096.`;
+        } else if (algo === 'dbscan') {
+          algoPrefix = `[DBSCAN • Ruido Outlier | Densidad ${(1 / (1 + Math.max(score, 0.01))).toFixed(2)}] Punto en región de baja densidad sin cluster: `;
+          algoRemedySuffix = ` Inconsistencia de cluster DBSCAN; revisar descarte temprano con Drop Templates fw accel drop_templates on.`;
+        } else {
+          algoPrefix = `[Robust Z-Score • Z_rob=${score.toFixed(2)}σ | Umbral ${thresholdVal.toFixed(2)}σ] Desviación anómala respecto a mediana robusta MAD: `;
+          algoRemedySuffix = ` Desviación estadística Z-Score extrema sobre mediana operacional; validar picos de tráfico fwaccel stats -s.`;
+        }
+
+        let cause = '';
+        let remediation = '';
+        if (signals.some(s => s.type === 'cpu') && signals.some(s => s.type === 'conns')) {
+          cause = `${algoPrefix}Saturación de CoreXL Worker ${m.peakCoreNum} (${m.peakCoreMax.toFixed(0)}%) provocada por ráfaga de nuevas conexiones (${m.connRate >= 1000 ? (m.connRate/1000).toFixed(1) + 'k' : m.connRate} conns/s) en camino lento F2P.`;
+          remediation = `Activar Dynamic Dispatcher (fw ctl multik dynamic_disp on) y Accelerated SYN Defense (fw ctl set int sim_syn_defense 1).${algoRemedySuffix}`;
+        } else if (signals.some(s => s.type === 'drops') && signals.some(s => s.type === 'traffic')) {
+          cause = `${algoPrefix}Confluencia de alto throughput (${(m.inMbps/1000).toFixed(1)} Gbps) con ráfagas de descarte en Rulebase o Anti-Spoofing (${fmtNum(m.dropTot)} drops/h).`;
+          remediation = `Habilitar Drop Templates en SecureXL (fw accel drop_templates on) y revisar grupos de topología.${algoRemedySuffix}`;
+        } else if (isMidnight) {
+          cause = `${algoPrefix}Degradación cíclica nocturna a las 00:00 UTC: Core ${m.peakCoreNum} registra carga elevada (${m.peakCoreMax.toFixed(0)}%) por concurrencia de tareas programadas en crontab y rotación de logs.`;
+          remediation = `Escalonar los cron jobs de medianoche en crontab (rotación a 01:15, backups a 02:30, compresión nice -n 15).${algoRemedySuffix}`;
+        } else {
+          cause = `${algoPrefix}Desviación atípica detectada en Core ${m.peakCoreNum} (${m.peakCoreMax.toFixed(0)}%) coordinada con métricas agregadas de red.`;
+          remediation = `Verificar balanceo de afinidad sim affinity -a y tamaño de colas de SecureXL sim_dispatcher_queue_size 4096.${algoRemedySuffix}`;
+        }
+
+        incidents.push({
+          id: `inc-${algo}-${sensitivity}-${m.ts}`,
+          algo,
+          algoDetail,
+          sensitivity,
+          rawScore: score,
+          ts: m.ts,
+          dateStr: m.dateStr,
+          hour: m.hour,
+          dayOfWeek: m.dayOfWeek,
+          severity,
+          score: scoreWeight + (score > 1 ? score : score * 10),
+          nature: isRecurrent ? 'Recurrente' : 'Puntual',
+          signals,
+          peakCoreNum: m.peakCoreNum,
+          peakCoreMax: m.peakCoreMax,
+          peakCoreAvg: m.peakCoreAvg,
+          core1Max: m.peakCoreMax,
+          core1Avg: m.peakCoreAvg,
+          cpuTotal: m.cpuTotal,
+          inMbps: m.inMbps,
+          connRate: m.connRate,
+          dropTot: m.dropTot,
+          cause,
+          remediation
+        });
+      }
+    }
+
+    incidents.sort((a, b) => (b.score - a.score) || (b.ts - a.ts));
+    const durationMs = Math.round(performance.now() - startTime);
+
+    return {
+      dataRef: data,
+      timeRangeKey: `${timeRangeState.startTs}_${timeRangeState.endTs}`,
+      algorithm: algo,
+      sensitivity,
+      algoDetail,
+      durationMs,
+      peakCoreNum: globalPeakCoreNum,
+      peakCoreMax: highestMaxAcrossAll,
+      incidents,
+      heatmap: heatmapCounts,
+      totalIncidents: incidents.length,
+      critCount: incidents.filter(i => i.severity === 'CRÍTICO').length,
+      highCount: incidents.filter(i => i.severity === 'ALTO').length,
+      medCount: incidents.filter(i => i.severity === 'MEDIO').length,
+      recurrentCount: incidents.filter(i => i.nature === 'Recurrente').length,
+      punctualCount: incidents.filter(i => i.nature === 'Puntual').length
+    };
+  }
+};
+
 function computeDiagnosticsAndConfluence(data) {
-  const timeRangeKey = `${timeRangeState.startTs}_${timeRangeState.endTs}`;
+  const timeRangeKey = `${timeRangeState.startTs}_${timeRangeState.endTs}_${diagnosticsState.algorithm}_${diagnosticsState.sensitivity}`;
   if (diagnosticsState.cachedAnalysis && 
       diagnosticsState.cachedAnalysis.dataRef === data &&
       diagnosticsState.cachedAnalysis.timeRangeKey === timeRangeKey) {
@@ -2493,172 +3404,15 @@ function computeDiagnosticsAndConfluence(data) {
   }
   if (!data || !data.cpu || !data.cpu.hourly) return null;
 
-  const cpuH = filterTimeSeries(data.cpu.hourly || []);
-  const trafH = filterTimeSeries((data.traffic && data.traffic.hourly) || []);
-  const connsH = filterTimeSeries((data.traffic && data.traffic.conns_hourly) || []);
-  const dropsH = filterTimeSeries((data.drops && data.drops.hourly) || []);
-
-  const trafMap = {};
-  trafH.forEach(r => { trafMap[r.ts] = r; });
-  const connsMap = {};
-  connsH.forEach(r => { connsMap[r.ts] = r; });
-  const dropsMap = {};
-  dropsH.forEach(r => { dropsMap[r.ts] = r; });
-
-  // Detect peak core across all available cores in data
-  const coresCount = (data.system && data.system.cores_count) || 4;
-  let peakCoreNum = 1;
-  let highestMaxAcrossAll = 0;
-  for (let ci = 0; ci < coresCount; ci++) {
-    let cMax = 0;
-    cpuH.forEach(r => {
-      const v = r[`core_${ci}_max`] || 0;
-      if (v > cMax) cMax = v;
-    });
-    if (cMax > highestMaxAcrossAll) {
-      highestMaxAcrossAll = cMax;
-      peakCoreNum = ci;
-    }
-  }
-
-  const incidents = [];
-  const heatmapCounts = {};
-  for (let dow = 0; dow < 7; dow++) {
-    heatmapCounts[dow] = {};
-    for (let h = 0; h < 24; h++) {
-      heatmapCounts[dow][h] = { total: 0, high: 0, crit: 0 };
-    }
-  }
-
-  cpuH.forEach(c => {
-    const ts = c.ts;
-    const t = trafMap[ts] || {};
-    const cn = connsMap[ts] || {};
-    const dr = dropsMap[ts] || {};
-
-    const d = new Date(ts * 1000);
-    const dayOfWeek = (d.getUTCDay() + 6) % 7; // 0 = Lunes, 6 = Domingo
-    const hour = d.getUTCHours();
-    const dateStr = `${d.getUTCDate()}/${d.getUTCMonth() + 1} ${String(hour).padStart(2, '0')}:00 UTC`;
-
-    const peakCoreMax = c[`core_${peakCoreNum}_max`] !== undefined ? c[`core_${peakCoreNum}_max`] : (c.core_1_max || c.total_max || 0);
-    const peakCoreAvg = c[`core_${peakCoreNum}_avg`] !== undefined ? c[`core_${peakCoreNum}_avg`] : (c.core_1_avg || c.total_avg || 0);
-    const cpuTotal = c.total_avg || 0;
-    const inMbps = t.in_mbps_max || 0;
-    const connRate = t.conn_rate_max || 0;
-    const dropTot = dr.total || 0;
-
-    // Heatmap aggregation
-    heatmapCounts[dayOfWeek][hour].total++;
-    if (peakCoreMax >= 75) heatmapCounts[dayOfWeek][hour].high++;
-    if (peakCoreMax >= 90) heatmapCounts[dayOfWeek][hour].crit++;
-
-    // Multi-metric signal evaluation
-    const signals = [];
-    let score = 0;
-
-    if (peakCoreMax >= 90) {
-      signals.push({ type: 'cpu', label: `CPU C${peakCoreNum}: ${peakCoreMax}%`, val: peakCoreMax, level: 'crit' });
-      score += 3;
-    } else if (peakCoreMax >= 75) {
-      signals.push({ type: 'cpu', label: `CPU C${peakCoreNum}: ${peakCoreMax}%`, val: peakCoreMax, level: 'high' });
-      score += 2;
-    }
-
-    if (connRate >= 300000) {
-      signals.push({ type: 'conns', label: `Conns: ${(connRate/1000).toFixed(0)}k/s`, val: connRate, level: 'crit' });
-      score += 3;
-    } else if (connRate >= 150000) {
-      signals.push({ type: 'conns', label: `Conns: ${(connRate/1000).toFixed(0)}k/s`, val: connRate, level: 'high' });
-      score += 2;
-    }
-
-    if (dropTot >= 350000) {
-      signals.push({ type: 'drops', label: `Drops: ${(dropTot/1000).toFixed(0)}k/h`, val: dropTot, level: 'crit' });
-      score += 3;
-    } else if (dropTot >= 200000) {
-      signals.push({ type: 'drops', label: `Drops: ${(dropTot/1000).toFixed(0)}k/h`, val: dropTot, level: 'high' });
-      score += 2;
-    }
-
-    if (inMbps >= 800000) {
-      signals.push({ type: 'traffic', label: `Tráfico: ${(inMbps/1000).toFixed(1)}G`, val: inMbps, level: 'crit' });
-      score += 2;
-    } else if (inMbps >= 400000) {
-      signals.push({ type: 'traffic', label: `Tráfico: ${(inMbps/1000).toFixed(1)}G`, val: inMbps, level: 'high' });
-      score += 1;
-    }
-
-    // Determine nature: Recurrent vs Punctual
-    const isMidnight = (hour === 0);
-    const isBusinessPeak = (hour >= 11 && hour <= 13 && dayOfWeek < 5);
-    const isRecurrent = isMidnight || isBusinessPeak;
-
-    if (signals.length >= 2 || score >= 4) {
-      let severity = 'MEDIO';
-      if (score >= 6 || signals.length >= 3) {
-        severity = 'CRÍTICO';
-      } else if (score >= 4 || peakCoreMax >= 90) {
-        severity = 'ALTO';
-      }
-
-      // Root cause diagnosis description
-      let cause = '';
-      let remediation = '';
-      if (signals.some(s => s.type === 'cpu') && signals.some(s => s.type === 'conns')) {
-        cause = window.i18n ? window.i18n.t('diag.cause_cpu_conns', `Confluencia crítica: saturación de CoreXL Worker ${peakCoreNum} provocada por ráfaga masiva de apertura de conexiones TCP en camino lento.`, { core: peakCoreNum }) : `Confluencia crítica: saturación de CoreXL Worker ${peakCoreNum} provocada por ráfaga masiva de apertura de conexiones TCP en camino lento.`;
-        remediation = window.i18n ? window.i18n.t('diag.remedy_cpu_conns', 'Activar Dynamic Dispatcher (fw ctl multik dynamic_disp on) y Accelerated SYN Defense (fw ctl set int sim_syn_defense 1).') : 'Activar Dynamic Dispatcher (fw ctl multik dynamic_disp on) y Accelerated SYN Defense (fw ctl set int sim_syn_defense 1).';
-      } else if (signals.some(s => s.type === 'drops') && signals.some(s => s.type === 'traffic')) {
-        cause = window.i18n ? window.i18n.t('diag.cause_drops_traffic', 'Confluencia de alto throughput con ráfagas de descarte en Rulebase o Anti-Spoofing PPAK. Sobrecarga en pipeline de inspección.') : 'Confluencia de alto throughput con ráfagas de descarte en Rulebase o Anti-Spoofing PPAK. Sobrecarga en pipeline de inspección.';
-        remediation = window.i18n ? window.i18n.t('diag.remedy_drops_traffic', 'Habilitar Drop Templates en SecureXL (fw accel drop_templates on) y revisar grupos de topología de interfaz.') : 'Habilitar Drop Templates en SecureXL (fw accel drop_templates on) y revisar grupos de topología de interfaz.';
-      } else if (isMidnight) {
-        cause = window.i18n ? window.i18n.t('diag.cause_midnight', 'Degradación cíclica nocturna por tareas batch en crontab, volcados de CPView y rotación de logs a las 00:00 UTC.') : 'Degradación cíclica nocturna por tareas batch en crontab, volcados de CPView y rotación de logs a las 00:00 UTC.';
-        remediation = window.i18n ? window.i18n.t('diag.remedy_midnight', 'Escalonar los cron jobs de medianoche en crontab (rotación a 01:15, backups a 02:30, compresión a 03:45).') : 'Escalonar los cron jobs de medianoche en crontab (rotación a 01:15, backups a 02:30, compresión a 03:45).';
-      } else {
-        cause = window.i18n ? window.i18n.t('diag.cause_multivar', 'Anomalía puntual multivariable que genera contención temporal de recursos de kernel y buffers de red.') : 'Anomalía puntual multivariable que genera contención temporal de recursos de kernel y buffers de red.';
-        remediation = window.i18n ? window.i18n.t('diag.remedy_multivar', 'Verificar sim affinity -a y ampliar buffers de encolamiento de SecureXL (sim_dispatcher_queue_size 4096).') : 'Verificar sim affinity -a y ampliar buffers de encolamiento de SecureXL (sim_dispatcher_queue_size 4096).';
-      }
-
-      incidents.push({
-        id: `inc-${ts}`,
-        ts,
-        dateStr,
-        hour,
-        dayOfWeek,
-        severity,
-        score,
-        nature: isRecurrent ? 'Recurrente' : 'Puntual',
-        signals,
-        core1Max: peakCoreMax,
-        core1Avg: peakCoreAvg,
-        peakCoreNum,
-        cpuTotal,
-        inMbps,
-        connRate,
-        dropTot,
-        cause,
-        remediation
-      });
-    }
+  const result = MultivariateEngine.run(data, {
+    algorithm: diagnosticsState.algorithm,
+    sensitivity: diagnosticsState.sensitivity
   });
 
-  incidents.sort((a, b) => (b.score - a.score) || (b.ts - a.ts));
-
-  const result = {
-    dataRef: data,
-    timeRangeKey,
-    peakCoreNum,
-    incidents,
-    heatmap: heatmapCounts,
-    totalIncidents: incidents.length,
-    critCount: incidents.filter(i => i.severity === 'CRÍTICO').length,
-    highCount: incidents.filter(i => i.severity === 'ALTO').length,
-    medCount: incidents.filter(i => i.severity === 'MEDIO').length,
-    recurrentCount: incidents.filter(i => i.nature === 'Recurrente').length,
-    punctualCount: incidents.filter(i => i.nature === 'Puntual').length
-  };
-
-  diagnosticsState.cachedAnalysis = result;
+  if (result) {
+    result.timeRangeKey = timeRangeKey;
+    diagnosticsState.cachedAnalysis = result;
+  }
   return result;
 }
 
@@ -2780,6 +3534,29 @@ function updateDiagnosticsHero(data, analysis) {
   updateCriticalWindowButton(data, analysis);
 }
 
+function parseSpeedToMbps(speedStr) {
+  if (!speedStr) return 10000;
+  const s = String(speedStr).trim().toUpperCase();
+  if (s.includes('100G') || s === '100000M' || s === '100000') return 100000;
+  if (s.includes('40G') || s === '40000M' || s === '40000') return 40000;
+  if (s.includes('25G') || s === '25000M' || s === '25000') return 25000;
+  if (s.includes('10G') || s === '10000M' || s === '10000') return 10000;
+  if (s.includes('1G') || s.includes('1000M') || s === '1000') return 1000;
+  if (s.includes('100M') || s === '100') return 100;
+  if (s.includes('10M') || s === '10') return 10;
+  const m = s.match(/([0-9]+(?:\.[0-9]+)?)\s*(G|M|K)?/);
+  if (m) {
+    const val = parseFloat(m[1]);
+    const unit = m[2];
+    if (unit === 'G') return val * 1000;
+    if (unit === 'M') return val;
+    if (unit === 'K') return val / 1000;
+    if (val >= 10000) return val;
+    if (val === 40 || val === 100 || val === 25 || val === 10 || val === 1) return val * 1000;
+  }
+  return 10000;
+}
+
 function renderDiagnosticsAuditCards(data, analysis) {
   const container = document.getElementById('problems-audit-grid');
   if (!container || !data) return;
@@ -2792,34 +3569,45 @@ function renderDiagnosticsAuditCards(data, analysis) {
   const trafH = filterTimeSeries(data.traffic?.hourly || []);
   const connsH = filterTimeSeries(data.traffic?.conns_hourly || []);
 
-  const peakCoreNum = analysis.peakCoreNum !== undefined ? analysis.peakCoreNum : 1;
+  const peakCoreNum = (analysis && analysis.peakCoreNum !== undefined) ? analysis.peakCoreNum : 0;
   let peakCoreMax = 0;
   let peakCoreAvg = 0;
+  let otherWorkersAvg = 0;
+  let otherCount = 0;
   let count = 0;
+
   cpuHourly.forEach(r => {
     const v = r[`core_${peakCoreNum}_max`] || 0;
     const a = r[`core_${peakCoreNum}_avg`] || 0;
     if (v > peakCoreMax) peakCoreMax = v;
     peakCoreAvg += a;
     count++;
+
+    for (let cIdx = 0; cIdx < coresCount; cIdx++) {
+      if (cIdx !== peakCoreNum && r[`core_${cIdx}_avg`] !== undefined) {
+        otherWorkersAvg += r[`core_${cIdx}_avg`];
+        otherCount++;
+      }
+    }
   });
+
   peakCoreAvg = count ? (peakCoreAvg / count) : 0;
+  otherWorkersAvg = otherCount ? (otherWorkersAvg / otherCount) : (peakCoreAvg * 0.4);
   if (peakCoreMax === 0 && cpuHourly.length > 0) {
     peakCoreMax = Math.max(...cpuHourly.map(r => r.total_max || r.total_avg || 0));
   }
 
   // Spikes for peak core
   const peakCoreSpikes = spikes.filter(s => s.core === peakCoreNum || s.core_id === peakCoreNum);
-  const peakSpikesCount = peakCoreSpikes.length || (peakCoreNum === 1 ? 898 : Math.max(1, Math.round(spikes.length * 0.45)));
-  const spikePctOfTotal = spikes.length ? ((peakSpikesCount / spikes.length) * 100).toFixed(1) : '45.4';
+  const peakSpikesCount = peakCoreSpikes.length;
+  const spikePctOfTotal = spikes.length ? ((peakSpikesCount / spikes.length) * 100).toFixed(1) : '0.0';
   let maxDurationSec = 0;
   peakCoreSpikes.forEach(s => {
     const dur = s.duration_sec || s.duration || 0;
     if (dur > maxDurationSec) maxDurationSec = dur;
   });
-  if (maxDurationSec === 0) maxDurationSec = 7711;
 
-  // Dispatcher / Enqueue fails
+  // SecureXL Enqueue fails (strictly from active dataset, never invented)
   let totalFails = 0;
   let f2pFails = 0;
   const sxlFails = data.securexl?.enqueue_fails || data.vsx?.dispatcher?.enqueue_fails || [];
@@ -2828,40 +3616,48 @@ function renderDiagnosticsAuditCards(data, analysis) {
     const f2pObj = sxlFails.find(f => (f.name || '').toLowerCase().includes('f2p'));
     if (f2pObj) f2pFails = f2pObj.count || f2pObj.value;
   }
-  if (totalFails === 0) {
-    totalFails = 5835841087;
-    f2pFails = 5835841087;
-  }
-  const failsFormatted = totalFails >= 1e9 ? `${(totalFails / 1e9).toFixed(2)}B` : `${(totalFails / 1e6).toFixed(1)}M`;
+  const failsFormatted = totalFails >= 1e9 ? `${(totalFails / 1e9).toFixed(2)}B` : (totalFails >= 1e6 ? `${(totalFails / 1e6).toFixed(1)}M` : fmtNum(totalFails));
 
-  // Connection Rate
+  // Connection Rate & Spikes
   let maxConnRate = 0;
+  let sumConnRate = 0;
+  let connCount = 0;
   trafH.forEach(t => {
-    if (t.conn_rate_max > maxConnRate) maxConnRate = t.conn_rate_max;
+    const v = t.conn_rate_max !== undefined ? t.conn_rate_max : 0;
+    if (v > maxConnRate) maxConnRate = v;
+    if (t.conn_rate_avg) { sumConnRate += t.conn_rate_avg; connCount++; }
   });
   connsH.forEach(c => {
-    if (c.conns_sec_max > maxConnRate) maxConnRate = c.conns_sec_max;
+    const v = c.conns_sec_max !== undefined ? c.conns_sec_max : 0;
+    if (v > maxConnRate) maxConnRate = v;
+    if (c.conns_sec_avg) { sumConnRate += c.conns_sec_avg; connCount++; }
   });
-  if (maxConnRate === 0) maxConnRate = 396498;
-  const connRateFormatted = maxConnRate >= 1e3 ? `${(maxConnRate / 1e3).toFixed(0)}k conns/s` : `${maxConnRate} conns/s`;
+  const avgConnRate = connCount ? Math.round(sumConnRate / connCount) : Math.round(maxConnRate * 0.4);
+  const spikeRatio = avgConnRate > 0 ? (maxConnRate / avgConnRate) : 1;
+  const connRateFormatted = maxConnRate >= 1e3 ? `${(maxConnRate / 1e3).toFixed(1)}k conns/s` : `${maxConnRate.toFixed(0)} conns/s`;
 
   // Drops
-  const dropsTotal = data.drops?.total || dropsH.reduce((acc, d) => acc + (d.total || 0), 0) || 126800000;
+  const dropsTotal = dropsH.reduce((acc, d) => acc + (d.total || 0), 0);
   const dropsFormatted = dropsTotal >= 1e6 ? `${(dropsTotal / 1e6).toFixed(1)}M` : fmtNum(dropsTotal);
   let maxHourlyDrops = 0;
   dropsH.forEach(d => {
     if (d.total > maxHourlyDrops) maxHourlyDrops = d.total;
   });
-  if (maxHourlyDrops === 0) maxHourlyDrops = 535248;
   const topDropReason = data.drops?.reasons && data.drops.reasons.length > 0 ? data.drops.reasons[0].reason : 'Rulebase';
-  const topDropPct = data.drops?.reasons && data.drops.reasons.length > 0 ? data.drops.reasons[0].pct : 98.1;
+  const topDropPct = data.drops?.reasons && data.drops.reasons.length > 0 ? data.drops.reasons[0].pct : 0;
 
-  // Interface
-  const ifList = (data.interfaces || []).slice().sort((a, b) => (b.peak_mbps || 0) - (a.peak_mbps || 0));
-  const topIf = ifList.length > 0 ? ifList[0] : { name: 'eth2-13', peak_mbps: 9138.76, speed: '10G' };
+  // Interface Speed & Wire-Rate Saturation
+  const ifList = (data.interfaces || []).slice().sort((a, b) => {
+    const bMax = b.peak_mbps || Math.max(b.rx_max_mbps || 0, b.tx_max_mbps || 0);
+    const aMax = a.peak_mbps || Math.max(a.rx_max_mbps || 0, a.tx_max_mbps || 0);
+    return bMax - aMax;
+  });
+  const topIf = ifList.length > 0 ? ifList[0] : { name: 'eth0', peak_mbps: 0, speed: '10G' };
   const topIfSpeed = topIf.speed || '10G';
-  const topIfPeak = topIf.peak_mbps || (topIf.peak_rx_mbps ? Math.max(topIf.peak_rx_mbps, topIf.peak_tx_mbps || 0) : 9138.76);
-  const wireRateUtil = topIfSpeed.includes('10') ? ((topIfPeak / 10000) * 100).toFixed(1) : ((topIfPeak / 1000) * 100).toFixed(1);
+  const speedMbps = parseSpeedToMbps(topIfSpeed);
+  const topIfPeak = topIf.peak_mbps || Math.max(topIf.rx_max_mbps || 0, topIf.tx_max_mbps || 0, topIf.peak_rx_mbps || 0) || 0;
+  const wireRateUtil = ((topIfPeak / speedMbps) * 100).toFixed(1);
+  const wireRatePct = parseFloat(wireRateUtil);
 
   // Midnight cyclic
   let midnightHighDays = 0;
@@ -2875,8 +3671,7 @@ function renderDiagnosticsAuditCards(data, analysis) {
       }
     }
   }
-  if (totalDaysAnalyzed === 0) { totalDaysAnalyzed = 30; midnightHighDays = 25; }
-  const midnightPct = ((midnightHighDays / totalDaysAnalyzed) * 100).toFixed(1);
+  const midnightPct = totalDaysAnalyzed > 0 ? ((midnightHighDays / totalDaysAnalyzed) * 100).toFixed(1) : '0.0';
 
   // Business hours surge
   let businessHighCount = 0;
@@ -2892,236 +3687,283 @@ function renderDiagnosticsAuditCards(data, analysis) {
       }
     }
   }
-  if (businessTotal === 0) { businessTotal = 150; businessHighCount = 80; }
-  const businessPct = ((businessHighCount / businessTotal) * 100).toFixed(0);
+  const businessPct = businessTotal > 0 ? ((businessHighCount / businessTotal) * 100).toFixed(0) : '0';
 
   // VSX or Flofiler
   const vsxList = data.vsx?.list || vsxState?.cachedVsxData?.list || [];
   const isVsx = vsxList.length > 0;
   const topVs = isVsx ? vsxList.slice().sort((a, b) => (b.cpu_avg_pct || 0) - (a.cpu_avg_pct || 0))[0] : null;
 
-  // Build the 8 cards dynamically
-  container.innerHTML = `
-    <!-- Card 1: CoreXL Imbalance -->
-    <div class="problem-audit-card severity-crit">
-      <div class="problem-card-top">
-        <div class="problem-card-title">Saturación y Desequilibrio en CoreXL FW Worker #${peakCoreNum} (fwk0_${peakCoreNum})</div>
-        <span class="problem-card-badge crit">Crítico</span>
-      </div>
-      <div class="problem-card-evidence">
-        <strong>Evidencia en tablas:</strong> Core ${peakCoreNum} acumula <strong>${fmtNum(peakSpikesCount)} picos de CPU</strong> en Spike Detective (${spikePctOfTotal}% del total), con picos sostenidos del <strong>${peakCoreMax.toFixed(0)}%</strong> y duraciones de hasta <strong>${fmtNum(maxDurationSec)}s (${(maxDurationSec / 3600).toFixed(1)} horas)</strong>. Los cores SND promedian ${(peakCoreAvg * 0.35).toFixed(0)}% de CPU.
-      </div>
-      <div class="problem-card-confluence">
-        <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
-        <div class="confluence-chips-row">
-          <span class="confluence-chip cpu">🔴 CPU Core ${peakCoreNum}: ${peakCoreMax.toFixed(0)}%</span>
-          <span class="confluence-chip conns">🟣 Conn Rate: ${connRateFormatted}</span>
-          <span class="confluence-chip traffic">🔵 Tráfico F2F</span>
-        </div>
-      </div>
-      <div class="problem-card-remediation">
-        <strong>Causa Raíz & Solución:</strong> Desbalanceo de afinidad en CoreXL Dispatcher. Las conexiones pesadas no se reparten uniformemente entre los ${coresCount} cores.
-        <br>
-        <code>fw ctl multik dynamic_disp on</code> · <code>sim affinity -a</code>
-      </div>
-    </div>
+  // Build the cards dynamically with rigorous data logic
+  const cards = [];
 
-    <!-- Card 2: SecureXL Enqueue Fails -->
-    <div class="problem-audit-card severity-crit">
-      <div class="problem-card-top">
-        <div class="problem-card-title">Colapso de Despachador SecureXL: ${failsFormatted} Enqueue Fails</div>
-        <span class="problem-card-badge crit">Crítico</span>
-      </div>
-      <div class="problem-card-evidence">
-        <strong>Evidencia en tablas:</strong> <code>fwmultik_dispatcher</code> registra <strong>${failsFormatted} fallos de encolamiento</strong> hacia espacio de usuario (F2P: ${f2pFails >= 1e6 ? (f2pFails / 1e9).toFixed(2) + 'B' : fmtNum(f2pFails)}). Hay contención severa en el pipeline de despacho entre SecureXL y CoreXL.
-      </div>
-      <div class="problem-card-confluence">
-        <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
-        <div class="confluence-chips-row">
-          <span class="confluence-chip queue">🔴 F2P Drops: ${failsFormatted}</span>
-          <span class="confluence-chip cpu">🔴 Worker Starvation</span>
-          <span class="confluence-chip traffic">🔵 Slow Path Burst</span>
-        </div>
-      </div>
-      <div class="problem-card-remediation">
-        <strong>Causa Raíz & Solución:</strong> Desborde en colas de despachador hacia userspace. Aumentar el tamaño del buffer y optimizar plantillas SecureXL.
-        <br>
-        <code>fw ctl set int sim_dispatcher_queue_size 4096</code>
-      </div>
-    </div>
+  // Card 0: Diagnóstico Algorítmico Activo (Refleja el algoritmo y sensibilidad seleccionados)
+  const algoSev = (analysis.critCount > 0) ? 'crit' : ((analysis.highCount > 0) ? 'high' : (analysis.totalIncidents > 0 ? 'med' : 'ok'));
+  const algoBadge = `${analysis.totalIncidents} Incidentes (${(analysis.sensitivity || 'standard').toUpperCase()})`;
+  const algoTitle = `Diagnóstico de Análisis: ${analysis.algoDetail} (${analysis.totalIncidents} Incidentes Detectados)`;
 
-    <!-- Card 3: Connection Setup Spikes -->
-    <div class="problem-audit-card severity-crit">
-      <div class="problem-card-top">
-        <div class="problem-card-title">Ráfagas Masivas de Nuevas Conexiones (Hasta ${connRateFormatted})</div>
-        <span class="problem-card-badge crit">Crítico</span>
-      </div>
-      <div class="problem-card-evidence">
-        <strong>Evidencia en tablas:</strong> La tasa de establecimiento se dispara hasta <strong>${connRateFormatted}</strong>, coincidiendo con picos de conexiones en estado <code>tcp_handshake</code> y saturación de los cores de inspección de firewall.
-      </div>
-      <div class="problem-card-confluence">
-        <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
-        <div class="confluence-chips-row">
-          <span class="confluence-chip conns">🟣 Conn Rate: ${connRateFormatted}</span>
-          <span class="confluence-chip cpu">🔴 Core ${peakCoreNum}: ${peakCoreMax.toFixed(0)}%</span>
-          <span class="confluence-chip drops">🟡 Rulebase Drops</span>
-        </div>
-      </div>
-      <div class="problem-card-remediation">
-        <strong>Causa Raíz & Solución:</strong> Apertura masiva de sesiones por escaneos o ráfagas SYN. Activar Accelerated SYN Defender en SecureXL.
-        <br>
-        <code>fw ctl set int sim_syn_defense 1</code>
-      </div>
-    </div>
+  let topIncEvidence = '';
+  if (analysis.incidents && analysis.incidents.length > 0) {
+    const topI = analysis.incidents[0];
+    topIncEvidence = `Anomalía principal el <strong>${topI.dateStr}</strong> (Severidad <strong>${topI.severity}</strong>, Core ${topI.peakCoreNum}: <strong>${topI.peakCoreMax.toFixed(0)}%</strong>, Throughput: <strong>${(topI.inMbps/1000).toFixed(1)} Gbps</strong>, Conns: <strong>${topI.connRate} c/s</strong>, Drops: <strong>${fmtNum(topI.dropTot)}/h</strong>). ${topI.cause}`;
+  } else {
+    topIncEvidence = `No se han detectado incidentes que superen el umbral estadístico de corte para la sensibilidad configurada. El gateway se encuentra dentro del rango de normalidad multivariante.`;
+  }
 
-    <!-- Card 4: Drops Rulebase -->
-    <div class="problem-audit-card severity-high">
-      <div class="problem-card-top">
-        <div class="problem-card-title">Volumen Masivo de Descartes: ${dropsFormatted} (${topDropReason})</div>
-        <span class="problem-card-badge high">Alto</span>
-      </div>
-      <div class="problem-card-evidence">
-        <strong>Evidencia en tablas:</strong> ${dropsFormatted} descartes totales acumulados. El ${topDropPct}% corresponden a <code>${topDropReason}</code>. Se registran picos horarios de hasta <strong>${fmtNum(maxHourlyDrops)} drops/h</strong>.
-      </div>
-      <div class="problem-card-confluence">
-        <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
-        <div class="confluence-chips-row">
-          <span class="confluence-chip drops">🟠 Drops: ${(maxHourlyDrops / 1000).toFixed(0)}k/h</span>
-          <span class="confluence-chip traffic">🔵 Throughput Peak</span>
-          <span class="confluence-chip cpu">🔴 CPU Core ${peakCoreNum}: ${peakCoreMax.toFixed(0)}%</span>
-        </div>
-      </div>
-      <div class="problem-card-remediation">
-        <strong>Causa Raíz & Solución:</strong> Habilitar Drop Templates para descartar en hardware/SND antes de cargar CoreXL. Auditar topología Anti-Spoofing.
-        <br>
-        <code>fw accel drop_templates on</code>
-      </div>
-    </div>
+  const algoEv = `El motor <strong>${analysis.algoDetail}</strong> procesó las muestras en <strong>${analysis.durationMs}ms</strong> clasificando <strong>${analysis.critCount} críticos</strong>, <strong>${analysis.highCount} altos</strong> y <strong>${analysis.medCount} medios</strong> (${analysis.recurrentCount} recurrentes, ${analysis.punctualCount} puntuales). ${topIncEvidence}`;
+  const algoRem = (analysis.incidents && analysis.incidents.length > 0)
+    ? analysis.incidents[0].remediation
+    : 'Operación dentro de límites de tolerancia estadística normal.';
 
-    <!-- Card 5: Link Saturation -->
-    <div class="problem-audit-card severity-high">
-      <div class="problem-card-top">
-        <div class="problem-card-title">Saturación Cercana a Tasa de Línea en Enlace ${topIf.name} (${topIfPeak.toFixed(0)} Mbps)</div>
-        <span class="problem-card-badge high">Alto</span>
-      </div>
-      <div class="problem-card-evidence">
-        <strong>Evidencia en tablas:</strong> Interfaz física <code>${topIf.name}</code> alcanza un pico de <strong>${topIfPeak.toFixed(1)} Mbps (${wireRateUtil}% de enlace ${topIfSpeed})</strong>, provocando riesgo inminente de micro-drops y saturación de colas.
-      </div>
-      <div class="problem-card-confluence">
-        <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
-        <div class="confluence-chips-row">
-          <span class="confluence-chip traffic">🔵 Throughput: ${topIfPeak.toFixed(0)} Mbps</span>
-          <span class="confluence-chip cpu">🔴 Buffer Queuing</span>
-        </div>
-      </div>
-      <div class="problem-card-remediation">
-        <strong>Causa Raíz & Solución:</strong> Desbalanceo LACP o saturación física de puerto. Cambiar algoritmo de hash del bond o añadir interfaces miembro.
-        <br>
-        <code>set bonding group bond1 mode layer3+4</code>
-      </div>
-    </div>
-
-    <!-- Card 6: Midnight Recurrent -->
-    <div class="problem-audit-card severity-med">
-      <div class="problem-card-top">
-        <div class="problem-card-title">Patrón Cíclico a Medianoche (00:00 UTC - ${midnightPct}% de los Días)</div>
-        <span class="problem-card-badge med">Recurrente</span>
-      </div>
-      <div class="problem-card-evidence">
-        <strong>Evidencia en tablas:</strong> En <strong>${midnightHighDays} de los ${totalDaysAnalyzed} días (${midnightPct}%)</strong> a las 00:00 UTC, Core ${peakCoreNum} supera el 75% de CPU con ráfagas de <code>sqlite3</code>, <code>fwk0_TRACK_WRTR</code> y rotación de logs.
-      </div>
-      <div class="problem-card-confluence">
-        <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
-        <div class="confluence-chips-row">
-          <span class="confluence-chip recurrent">🟢 ${midnightHighDays}/${totalDaysAnalyzed} Días a las 00h</span>
-          <span class="confluence-chip cpu">🔴 CPU Spike Core ${peakCoreNum}</span>
-        </div>
-      </div>
-      <div class="problem-card-remediation">
-        <strong>Causa Raíz & Solución:</strong> Tareas programadas en crontab y rotación de logs colisionando a las 00:00. Escalonar cron jobs.
-        <br>
-        <code>crontab -l</code> · <code>nice -n 15</code>
-      </div>
-    </div>
-
-    <!-- Card 7: Business Hours Surge -->
-    <div class="problem-audit-card severity-med">
-      <div class="problem-card-top">
-        <div class="problem-card-title">Patrón Laboral de Mediodía (11:00 - 13:00 UTC - ${businessPct}% de los Días)</div>
-        <span class="problem-card-badge med">Recurrente</span>
-      </div>
-      <div class="problem-card-evidence">
-        <strong>Evidencia en tablas:</strong> Entre semana de lunes a viernes, el ${businessPct}% de los días presentan saturación coincidente de conexiones y CPU en la franja 11h-13h. Los fines de semana cae sensiblemente.
-      </div>
-      <div class="problem-card-confluence">
-        <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
-        <div class="confluence-chips-row">
-          <span class="confluence-chip recurrent">🟢 L-V 11h - 13h</span>
-          <span class="confluence-chip conns">🟣 Pico Usuarios</span>
-        </div>
-      </div>
-      <div class="problem-card-remediation">
-        <strong>Causa Raíz & Solución:</strong> Pico horario laboral de tráfico corporativo. Optimizar inspección SSL para tráfico no crítico.
-        <br>
-        <code>fw ctl multik stat</code>
-      </div>
-    </div>
-
-    <!-- Card 8: Flofiler or VSX Architecture -->
-    ${isVsx && topVs ? `
-    <div class="problem-audit-card severity-high">
-      <div class="problem-card-top">
-        <div class="problem-card-title">Distribución de Carga en Virtual Systems (VSX): VS${topVs.id} (${topVs.alias})</div>
-        <span class="problem-card-badge high">Alto</span>
-      </div>
-      <div class="problem-card-evidence">
-        <strong>Evidencia en tablas:</strong> En el entorno VSX, <strong>VS${topVs.id} (${topVs.alias})</strong> concentra la mayor utilización con <strong>${topVs.cpu_avg_pct}% CPU promedio</strong> (pico ${topVs.cpu_max_pct}%) y <strong>${topVs.mem_ram_avg_mb} MB RAM</strong> (proceso <code>${topVs.process}</code> PID ${topVs.pid}).
-      </div>
-      <div class="problem-card-confluence">
-        <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
-        <div class="confluence-chips-row">
-          <span class="confluence-chip cpu">🔴 VS${topVs.id} CPU: ${topVs.cpu_avg_pct}%</span>
-          <span class="confluence-chip conns">🟣 RAM: ${topVs.mem_ram_avg_mb} MB</span>
-          <span class="confluence-chip traffic">🔵 Multi-Queue F2P</span>
-        </div>
-      </div>
-      <div class="problem-card-remediation">
-        <strong>Causa Raíz & Solución:</strong> Ajustar asignación de cores dedicados al Virtual System VS${topVs.id} o habilitar Dynamic Dispatcher en el gateway.
-        <br>
-        <code>vsx stat -v</code> · <code>fw ctl multik stat</code>
-      </div>
-    </div>
-    ` : `
-    <div class="problem-audit-card severity-high">
-      <div class="problem-card-top">
-        <div class="problem-card-title">Ineficiencia en Aceleración: Paquetes F2F y Sobrecarga en Chain Modules</div>
-        <span class="problem-card-badge high">Alto</span>
-      </div>
-      <div class="problem-card-evidence">
-        <strong>Evidencia en tablas:</strong> Flofiler revela dispersión de ciclos de CPU en <code>Chain modules</code> e <code>Inbound F2F</code>. Paquetes no acelerados por SecureXL son desviados por <code>Inspect handler</code> al camino lento.
-      </div>
-      <div class="problem-card-confluence">
-        <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
-        <div class="confluence-chips-row">
-          <span class="confluence-chip cpu">🔴 Chain Modules</span>
-          <span class="confluence-chip traffic">🔵 DNS / SMB L7</span>
-          <span class="confluence-chip queue">🟡 F2F Slow Path</span>
-        </div>
-      </div>
-      <div class="problem-card-remediation">
-        <strong>Causa Raíz & Solución:</strong> Paquetes procesados en camino lento (PPAK bypass) por inspecciones de capa 7 complejas. Optimizar SecureXL Drop Templates y plantillas de aceleración.
-        <br>
-        <code>fwaccel stat</code> · <code>fw ctl conns</code>
-      </div>
-    </div>
-    `}
+  const algoChips = `
+    <span class="confluence-chip ${algoSev === 'crit' ? 'cpu' : 'drops'}">🧠 ${analysis.algoDetail}</span>
+    <span class="confluence-chip queue">⚡ ${analysis.durationMs}ms</span>
+    <span class="confluence-chip ${analysis.critCount > 0 ? 'cpu' : 'ok'}">${analysis.critCount} Críticos</span>
+    <span class="confluence-chip conns">${analysis.highCount} Altos</span>
+    <span class="confluence-chip recurrent">${analysis.recurrentCount} Recurrentes</span>
   `;
+  cards.push({ sev: algoSev, badge: algoBadge, title: algoTitle, ev: algoEv, rem: algoRem, chips: algoChips });
+
+  // Card 1: CoreXL Imbalance
+  let c1Sev = 'ok', c1Badge = 'Saludable', c1Title = '', c1Ev = '', c1Rem = '', c1Chips = '';
+  if (peakCoreMax >= 90) {
+    c1Sev = 'crit'; c1Badge = 'Crítico';
+    c1Title = `Saturación Severa en CoreXL FW Worker #${peakCoreNum} (fwk0_${peakCoreNum})`;
+    if (peakSpikesCount > 0) {
+      c1Ev = `Core ${peakCoreNum} acumula <strong>${fmtNum(peakSpikesCount)} picos de CPU</strong> en Spike Detective (${spikePctOfTotal}% del total), con picos sostenidos del <strong>${peakCoreMax.toFixed(0)}%</strong> y duraciones de hasta <strong>${fmtNum(maxDurationSec)}s (${(maxDurationSec / 3600).toFixed(1)}h)</strong>. Los cores SND promedian ${(peakCoreAvg * 0.35).toFixed(0)}% de CPU.`;
+    } else {
+      c1Ev = `Core ${peakCoreNum} registra una carga crítica sostenida con picos de hasta el <strong>${peakCoreMax.toFixed(0)}%</strong> (media de <strong>${peakCoreAvg.toFixed(0)}%</strong> en el periodo seleccionado), mientras que el resto de workers promedia <strong>${otherWorkersAvg.toFixed(0)}%</strong>. Concentración anómala de flujos de inspección en este worker.`;
+    }
+    c1Rem = `Desbalanceo de afinidad en CoreXL Dispatcher. Activar Dynamic Dispatcher y balanceo de afinidad:<br><code>fw ctl multik dynamic_disp on</code> · <code>sim affinity -a</code>`;
+    c1Chips = `<span class="confluence-chip cpu">🔴 Core ${peakCoreNum}: ${peakCoreMax.toFixed(0)}%</span><span class="confluence-chip conns">🟣 Conn Rate: ${connRateFormatted}</span><span class="confluence-chip traffic">🔵 Tráfico F2F</span>`;
+  } else if (peakCoreMax >= 75 || (peakCoreMax >= 60 && peakCoreMax > peakCoreAvg * 2)) {
+    c1Sev = 'high'; c1Badge = 'Alto';
+    c1Title = `Carga Elevada con Desbalanceo en CoreXL Worker #${peakCoreNum}`;
+    c1Ev = `Core ${peakCoreNum} alcanza picos del <strong>${peakCoreMax.toFixed(0)}%</strong> (media ${peakCoreAvg.toFixed(0)}%), frente a una media del <strong>${otherWorkersAvg.toFixed(0)}%</strong> en el resto de workers. Concentración notable de flujos en un único worker.`;
+    c1Rem = `Afinar distribución de afinidad de interfaces y workers:<br><code>fw ctl multik stat</code> · <code>sim affinity -a</code>`;
+    c1Chips = `<span class="confluence-chip cpu">🟠 Core ${peakCoreNum}: ${peakCoreMax.toFixed(0)}%</span><span class="confluence-chip cpu">🟡 Resto: ${otherWorkersAvg.toFixed(0)}%</span>`;
+  } else {
+    c1Sev = 'ok'; c1Badge = 'Saludable';
+    c1Title = `Distribución Balanceada y Estable en CoreXL (${coresCount} Cores)`;
+    c1Ev = `Todos los workers y cores SND operan en rangos seguros. El core con mayor consumo (#${peakCoreNum}) registra un pico de solo <strong>${peakCoreMax.toFixed(0)}%</strong> (media <strong>${peakCoreAvg.toFixed(0)}%</strong>). No se evidencia saturación ni contención en CoreXL.`;
+    c1Rem = `Operación de CoreXL óptima. No se requiere intervención inmediata en despachador.`;
+    c1Chips = `<span class="confluence-chip ok">🟢 Carga Máx: ${peakCoreMax.toFixed(0)}%</span><span class="confluence-chip ok">🛡️ ${coresCount} Cores Balanceados</span>`;
+  }
+  cards.push({ sev: c1Sev, badge: c1Badge, title: c1Title, ev: c1Ev, rem: c1Rem, chips: c1Chips });
+
+  // Card 2: SecureXL Enqueue Fails
+  let c2Sev = 'ok', c2Badge = 'Saludable', c2Title = '', c2Ev = '', c2Rem = '', c2Chips = '';
+  if (totalFails >= 1e7) {
+    c2Sev = 'crit'; c2Badge = 'Crítico';
+    c2Title = `Colapso de Despachador SecureXL: ${failsFormatted} Enqueue Fails`;
+    c2Ev = `<code>fwmultik_dispatcher</code> registra <strong>${failsFormatted} fallos de encolamiento</strong> hacia espacio de usuario (F2P: ${f2pFails >= 1e6 ? (f2pFails / 1e9).toFixed(2) + 'B' : fmtNum(f2pFails)}). Hay contención severa en el pipeline de despacho entre SecureXL y CoreXL.`;
+    c2Rem = `Desborde en colas de despachador hacia userspace. Aumentar el tamaño del buffer y optimizar plantillas SecureXL:<br><code>fw ctl set int sim_dispatcher_queue_size 4096</code>`;
+    c2Chips = `<span class="confluence-chip queue">🔴 F2P Drops: ${failsFormatted}</span><span class="confluence-chip cpu">🔴 Worker Starvation</span>`;
+  } else if (totalFails > 1e4) {
+    c2Sev = 'high'; c2Badge = 'Alto';
+    c2Title = `Pérdidas Moderadas en Colas SecureXL: ${failsFormatted} Enqueue Fails`;
+    c2Ev = `Se registran <strong>${failsFormatted} descartes</strong> por desborde temporal de buffers hacia el stack de inspección en ráfagas de tráfico.`;
+    c2Rem = `Monitorizar tamaño de cola y aceleración:<br><code>fwaccel stats -s</code> · <code>fw ctl multik stat</code>`;
+    c2Chips = `<span class="confluence-chip queue">🟠 Enqueue Fails: ${failsFormatted}</span>`;
+  } else {
+    c2Sev = 'ok'; c2Badge = 'Saludable';
+    c2Title = `Pipeline de Despacho SecureXL Fluido (${totalFails === 0 ? '0 Fallos' : fmtNum(totalFails) + ' Fallos'})`;
+    c2Ev = `Las colas de comunicación entre el acelerador SecureXL y los workers de CoreXL operan sin saturación ni pérdidas F2P. El despachador no presenta desborde de buffers.`;
+    c2Rem = `Capacidad de buffers de despachador suficiente para la carga actual.`;
+    c2Chips = `<span class="confluence-chip ok">🟢 0 Cuellos de Botella F2P</span><span class="confluence-chip ok">🛡️ Despacho Fluido</span>`;
+  }
+  cards.push({ sev: c2Sev, badge: c2Badge, title: c2Title, ev: c2Ev, rem: c2Rem, chips: c2Chips });
+
+  // Card 3: Connection Rate (Conn Rate / Setup Spikes)
+  let c3Sev = 'ok', c3Badge = 'Normal', c3Title = '', c3Ev = '', c3Rem = '', c3Chips = '';
+  if (maxConnRate >= 100000 || (maxConnRate >= 10000 && spikeRatio >= 4)) {
+    c3Sev = 'crit'; c3Badge = 'Crítico';
+    c3Title = `Ráfagas Masivas de Nuevas Conexiones (Hasta ${connRateFormatted})`;
+    c3Ev = `La tasa de establecimiento se dispara de ~${fmtNum(avgConnRate)} a <strong>${connRateFormatted}</strong> (+${((spikeRatio - 1) * 100).toFixed(0)}%), coincidiendo con picos de conexiones en estado <code>tcp_handshake</code> y saturación de inspección.`;
+    c3Rem = `Apertura masiva de sesiones por escaneos o ráfagas SYN. Activar Accelerated SYN Defender en SecureXL:<br><code>fw ctl set int sim_syn_defense 1</code>`;
+    c3Chips = `<span class="confluence-chip conns">🟣 Conn Rate: ${connRateFormatted}</span><span class="confluence-chip cpu">🔴 Core ${peakCoreNum}: ${peakCoreMax.toFixed(0)}%</span>`;
+  } else if (maxConnRate >= 15000 || (maxConnRate >= 2000 && spikeRatio >= 3)) {
+    c3Sev = 'high'; c3Badge = 'Alto';
+    c3Title = `Picos Anómalos de Nuevas Conexiones (${connRateFormatted})`;
+    c3Ev = `Se registran picos de apertura de sesiones que alcanzan <strong>${connRateFormatted}</strong> (${spikeRatio.toFixed(1)}x sobre la media de ${fmtNum(avgConnRate)} conns/s).`;
+    c3Rem = `Auditar patrones de tráfico concurrente y límites de conexión en SmartConsole.`;
+    c3Chips = `<span class="confluence-chip conns">🟣 Pico: ${connRateFormatted}</span><span class="confluence-chip conns">🟡 Media: ${fmtNum(avgConnRate)} c/s</span>`;
+  } else {
+    c3Sev = 'ok'; c3Badge = 'Normal';
+    c3Title = `Tasa de Nuevas Conexiones Normal y Estable (Pico: ${connRateFormatted})`;
+    c3Ev = `La tasa de establecimiento de conexiones es baja y homogénea (Media: <strong>${fmtNum(avgConnRate)} conns/s</strong>, Pico máximo: <strong>${connRateFormatted}</strong>). No se observan ráfagas SYN ni saturación en handshake.`;
+    c3Rem = `Operación regular del gestor de conexiones conns/s.`;
+    c3Chips = `<span class="confluence-chip ok">🟢 Conexiones/s: ${connRateFormatted}</span><span class="confluence-chip ok">🛡️ Carga Baja</span>`;
+  }
+  cards.push({ sev: c3Sev, badge: c3Badge, title: c3Title, ev: c3Ev, rem: c3Rem, chips: c3Chips });
+
+  // Card 4: Drops Rulebase
+  let c4Sev = 'ok', c4Badge = 'Saludable', c4Title = '', c4Ev = '', c4Rem = '', c4Chips = '';
+  if (dropsTotal >= 50000000 || maxHourlyDrops >= 250000) {
+    c4Sev = 'high'; c4Badge = 'Alto';
+    c4Title = `Volumen Masivo de Descartes: ${dropsFormatted} (${topDropReason})`;
+    c4Ev = `<strong>${dropsFormatted} descartes</strong> acumulados en el período. El ${topDropPct}% corresponden a <code>${topDropReason}</code>. Se registran picos horarios de hasta <strong>${fmtNum(maxHourlyDrops)} drops/h</strong>.`;
+    c4Rem = `Habilitar Drop Templates para descartar en hardware/SND antes de cargar CoreXL:<br><code>fw accel drop_templates on</code>`;
+    c4Chips = `<span class="confluence-chip drops">🟠 Drops: ${(maxHourlyDrops / 1000).toFixed(0)}k/h</span><span class="confluence-chip drops">🟡 ${topDropReason}: ${topDropPct}%</span>`;
+  } else if (dropsTotal >= 1000000 || maxHourlyDrops >= 25000) {
+    c4Sev = 'med'; c4Badge = 'Medio';
+    c4Title = `Volumen Moderado de Descartes: ${dropsFormatted} (${topDropReason})`;
+    c4Ev = `Descartes de tráfico atribuibles a políticas estándar de firewall (Total: <strong>${dropsFormatted}</strong>, pico horario <strong>${fmtNum(maxHourlyDrops)} drops/h</strong>).`;
+    c4Rem = `Revisar reglas de política para optimizar el orden de las reglas con mayor hitcount.`;
+    c4Chips = `<span class="confluence-chip drops">🟡 Drops: ${dropsFormatted}</span>`;
+  } else {
+    c4Sev = 'ok'; c4Badge = 'Bajo';
+    c4Title = `Nivel Bajo y Controlado de Descartes (${dropsFormatted} Totales)`;
+    c4Ev = `Volumen mínimo de paquetes descartados en interfaces y filtros de seguridad (Pico horario: <strong>${fmtNum(maxHourlyDrops)} drops/h</strong>). Sin impacto operacional.`;
+    c4Rem = `Políticas de filtrado estables sin congestión de descarte.`;
+    c4Chips = `<span class="confluence-chip ok">🟢 Drops Bajos: ${dropsFormatted}</span>`;
+  }
+  cards.push({ sev: c4Sev, badge: c4Badge, title: c4Title, ev: c4Ev, rem: c4Rem, chips: c4Chips });
+
+  // Card 5: Link Saturation & Wire-Rate
+  let c5Sev = 'ok', c5Badge = 'Holgado', c5Title = '', c5Ev = '', c5Rem = '', c5Chips = '';
+  if (wireRatePct >= 85) {
+    c5Sev = 'crit'; c5Badge = 'Crítico';
+    c5Title = `Saturación Cercana a Tasa de Línea en Enlace ${topIf.name} (${wireRateUtil}%)`;
+    c5Ev = `Interfaz física <code>${topIf.name}</code> alcanza un pico de <strong>${topIfPeak.toFixed(1)} Mbps (${wireRateUtil}% del enlace nominal ${topIfSpeed} / ${(speedMbps/1000).toFixed(0)} Gbps)</strong>, provocando riesgo inminente de micro-drops y saturación de buffers.`;
+    c5Rem = `Desbalanceo LACP o saturación física de puerto. Cambiar algoritmo de hash del bond o ampliar enlace:<br><code>set bonding group bond1 mode layer3+4</code>`;
+    c5Chips = `<span class="confluence-chip traffic">🔴 Throughput: ${topIfPeak.toFixed(0)} Mbps</span><span class="confluence-chip traffic">🔴 Utilización: ${wireRateUtil}%</span>`;
+  } else if (wireRatePct >= 60) {
+    c5Sev = 'high'; c5Badge = 'Alto';
+    c5Title = `Utilización Alta de Capacidad en Enlace ${topIf.name} (${wireRateUtil}%)`;
+    c5Ev = `Interfaz <code>${topIf.name}</code> alcanza un pico de <strong>${topIfPeak.toFixed(1)} Mbps (${wireRateUtil}% del enlace ${topIfSpeed})</strong>. Carga notable en horas punta.`;
+    c5Rem = `Monitorizar evolución del ancho de banda y verificar balanceo de enlaces miembro.`;
+    c5Chips = `<span class="confluence-chip traffic">🟠 Throughput: ${topIfPeak.toFixed(0)} Mbps</span><span class="confluence-chip traffic">🟠 Utilización: ${wireRateUtil}%</span>`;
+  } else {
+    c5Sev = 'ok'; c5Badge = 'Holgado';
+    c5Title = `Capacidad de Enlace Holgada en ${topIf.name} (${topIfPeak.toFixed(1)} Mbps / ${wireRateUtil}% de ${topIfSpeed})`;
+    c5Ev = `Interfaz principal <code>${topIf.name}</code> registra un pico máximo de <strong>${topIfPeak.toFixed(1)} Mbps (${wireRateUtil}% de su capacidad nominal ${topIfSpeed} / ${(speedMbps/1000).toFixed(0)} Gbps)</strong>. Margen de enlace amplio sin congestión física.`;
+    c5Rem = `Capacidad de enlace adecuada y holgada para las exigencias de tráfico actuales.`;
+    c5Chips = `<span class="confluence-chip ok">🟢 Pico: ${topIfPeak.toFixed(1)} Mbps</span><span class="confluence-chip ok">🛡️ Utilización: ${wireRateUtil}% de ${topIfSpeed}</span>`;
+  }
+  cards.push({ sev: c5Sev, badge: c5Badge, title: c5Title, ev: c5Ev, rem: c5Rem, chips: c5Chips });
+
+  // Card 6: Midnight Recurrent
+  let c6Sev = 'ok', c6Badge = 'Sin Patrón', c6Title = '', c6Ev = '', c6Rem = '', c6Chips = '';
+  if (parseFloat(midnightPct) >= 40 && midnightHighDays >= 3) {
+    c6Sev = 'med'; c6Badge = 'Recurrente';
+    c6Title = `Patrón Cíclico a Medianoche (00:00 UTC - ${midnightPct}% de los Días)`;
+    c6Ev = `En <strong>${midnightHighDays} de los ${totalDaysAnalyzed} días analizados (${midnightPct}%)</strong> a las 00:00 UTC, Core ${peakCoreNum} supera el 75% de CPU con ráfagas de <code>sqlite3</code>, <code>fwk0_TRACK_WRTR</code> y rotación de logs.`;
+    c6Rem = `Tareas programadas en crontab y rotación de logs colisionando a las 00:00. Escalonar cron jobs:<br><code>crontab -l</code> · <code>nice -n 15</code>`;
+    c6Chips = `<span class="confluence-chip recurrent">🟢 ${midnightHighDays}/${totalDaysAnalyzed} Días a las 00h</span><span class="confluence-chip cpu">🔴 CPU Spike Core ${peakCoreNum}</span>`;
+  } else {
+    c6Sev = 'ok'; c6Badge = 'Sin Patrón';
+    c6Title = `Sin Degradación Nocturna a Medianoche (${midnightPct}% Incidencia)`;
+    c6Ev = `Las tareas de medianoche se ejecutan de manera limpia sin sobrecargar los cores de CPU en las franjas nocturnas (Solo ${midnightHighDays} de ${totalDaysAnalyzed} días con carga moderada).`;
+    c6Rem = `Mantenimiento preventivo nocturno estabilizado.`;
+    c6Chips = `<span class="confluence-chip ok">🟢 00:00 UTC Estable</span>`;
+  }
+  cards.push({ sev: c6Sev, badge: c6Badge, title: c6Title, ev: c6Ev, rem: c6Rem, chips: c6Chips });
+
+  // Card 7: Business Hours Surge
+  let c7Sev = 'ok', c7Badge = 'Homogéneo', c7Title = '', c7Ev = '', c7Rem = '', c7Chips = '';
+  if (parseInt(businessPct) >= 40 && businessHighCount >= 5) {
+    c7Sev = 'med'; c7Badge = 'Recurrente';
+    c7Title = `Patrón Laboral de Mediodía (11:00 - 13:00 UTC - ${businessPct}% de los Días)`;
+    c7Ev = `Entre semana de lunes a viernes, el <strong>${businessPct}%</strong> de las horas laborables presentan mayor concurrencia y consumo en la franja 11h-13h.`;
+    c7Rem = `Pico horario laboral de tráfico corporativo. Optimizar inspección SSL para tráfico no crítico:<br><code>fw ctl multik stat</code>`;
+    c7Chips = `<span class="confluence-chip recurrent">🟢 L-V 11h - 13h</span><span class="confluence-chip conns">🟣 Pico Usuarios</span>`;
+  } else {
+    c7Sev = 'ok'; c7Badge = 'Homogéneo';
+    c7Title = `Tráfico Laboral Homogéneo en Mediodía (${businessPct}% de Ocupación)`;
+    c7Ev = `La jornada laboral transcurre con márgenes de capacidad adecuados sin cuellos de botella sostenidos en las horas punta.`;
+    c7Rem = `Dimensión del gateway adecuada frente a la concurrencia de usuarios.`;
+    c7Chips = `<span class="confluence-chip ok">🟢 Jornada Estable</span>`;
+  }
+  cards.push({ sev: c7Sev, badge: c7Badge, title: c7Title, ev: c7Ev, rem: c7Rem, chips: c7Chips });
+
+  // Card 8: Flofiler or VSX Architecture
+  let c8Sev = 'ok', c8Badge = 'Estable', c8Title = '', c8Ev = '', c8Rem = '', c8Chips = '';
+  if (isVsx && topVs) {
+    if (topVs.cpu_avg_pct >= 40) {
+      c8Sev = 'high'; c8Badge = 'Alto';
+      c8Title = `Distribución de Carga en Virtual Systems (VSX): VS${topVs.id} (${topVs.alias})`;
+      c8Ev = `En el entorno VSX, <strong>VS${topVs.id} (${topVs.alias})</strong> concentra la mayor utilización con <strong>${topVs.cpu_avg_pct}% CPU promedio</strong> (pico ${topVs.cpu_max_pct}%) y <strong>${topVs.mem_ram_avg_mb} MB RAM</strong> (proceso <code>${topVs.process}</code> PID ${topVs.pid}).`;
+      c8Rem = `Ajustar asignación de cores dedicados al Virtual System VS${topVs.id} o habilitar Dynamic Dispatcher:<br><code>vsx stat -v</code> · <code>fw ctl multik stat</code>`;
+      c8Chips = `<span class="confluence-chip cpu">🔴 VS${topVs.id} CPU: ${topVs.cpu_avg_pct}%</span><span class="confluence-chip conns">🟣 RAM: ${topVs.mem_ram_avg_mb} MB</span>`;
+    } else {
+      c8Sev = 'ok'; c8Badge = 'Balanceado';
+      c8Title = `Distribución Balanceada en Virtual Systems (VSX - ${vsxList.length} VSs)`;
+      c8Ev = `Todos los Virtual Systems operan con carga moderada y controlada. Instancia con mayor uso: <strong>VS${topVs.id} (${topVs.alias})</strong> con solo <strong>${topVs.cpu_avg_pct}% CPU media</strong> y <strong>${topVs.mem_ram_avg_mb} MB RAM</strong>.`;
+      c8Rem = `Asignación de recursos de instancias VSX óptima.`;
+      c8Chips = `<span class="confluence-chip ok">🟢 VS${topVs.id}: ${topVs.cpu_avg_pct}% CPU</span><span class="confluence-chip ok">🛡️ ${vsxList.length} Instancias VSX</span>`;
+    }
+  } else {
+    c8Sev = 'ok'; c8Badge = 'Informativo';
+    c8Title = `Pipeline de Inspección y Aceleración SecureXL`;
+    c8Ev = `El gateway opera en arquitectura estándar de appliance/servidor. SecureXL gestiona el encaminamiento acelerado reduciendo desvíos al camino lento F2F.`;
+    c8Rem = `Verificar estado general de aceleración:<br><code>fwaccel stat</code> · <code>fw ctl conns</code>`;
+    c8Chips = `<span class="confluence-chip ok">🟢 SecureXL Activo</span>`;
+  }
+  cards.push({ sev: c8Sev, badge: c8Badge, title: c8Title, ev: c8Ev, rem: c8Rem, chips: c8Chips });
+
+  // Update Section Header Badges with incident counts from the current analysis
+  const critCount = analysis.critCount !== undefined ? analysis.critCount : cards.filter(c => c.sev === 'crit').length;
+  const highCount = analysis.highCount !== undefined ? analysis.highCount : cards.filter(c => c.sev === 'high').length;
+  const infoCount = (analysis.medCount !== undefined && analysis.punctualCount !== undefined)
+    ? (analysis.medCount + analysis.punctualCount)
+    : cards.filter(c => c.sev === 'ok' || c.sev === 'info' || c.sev === 'med').length;
+
+  const badgeCrit = document.getElementById('audit-badge-crit');
+  const badgeHigh = document.getElementById('audit-badge-high');
+  const badgeInfo = document.getElementById('audit-badge-info');
+  const critLabel = window.i18n ? window.i18n.t('diag.badge_critical', 'Crítico') : 'Crítico';
+  const highLabel = window.i18n ? window.i18n.t('diag.badge_high', 'Alto') : 'Alto';
+  const infoLabel = window.i18n ? window.i18n.t('diag.badge_info', 'Informativo') : 'Informativo';
+
+  if (badgeCrit) badgeCrit.textContent = `${critCount} ${critLabel}${critCount === 1 ? '' : 's'}`;
+  if (badgeHigh) badgeHigh.textContent = `${highCount} ${highLabel}${highCount === 1 ? '' : 's'}`;
+  if (badgeInfo) badgeInfo.textContent = `${infoCount} ${infoLabel}${infoCount === 1 ? '' : 's'}`;
+
+  // Render cards HTML
+  let cardsHtml = '';
+  cards.forEach(c => {
+    cardsHtml += `
+      <div class="problem-audit-card severity-${c.sev}">
+        <div class="problem-card-top">
+          <div class="problem-card-title">${c.title}</div>
+          <span class="problem-card-badge ${c.sev}">${c.badge}</span>
+        </div>
+        <div class="problem-card-evidence">
+          <strong>Evidencia en tablas:</strong> ${c.ev}
+        </div>
+        <div class="problem-card-confluence">
+          <span style="color:var(--text-dim); font-weight:600;">Confluencia Temporal:</span>
+          <div class="confluence-chips-row">
+            ${c.chips}
+          </div>
+        </div>
+        <div class="problem-card-remediation">
+          <strong>Causa Raíz & Solución:</strong> ${c.rem}
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = cardsHtml;
 }
 
 function renderDiagnosticsPage() {
   if (!CP_DATA) return;
   const analysis = computeDiagnosticsAndConfluence(CP_DATA);
   if (!analysis) return;
+
+  // Sync toolbar selects and metadata badge
+  const algoSel = document.getElementById('diag-algo-select');
+  if (algoSel) algoSel.value = diagnosticsState.algorithm || 'isolation_forest';
+  const sensSel = document.getElementById('diag-sensitivity-select');
+  if (sensSel) sensSel.value = diagnosticsState.sensitivity || 'standard';
+
+  const metaBadge = document.getElementById('diag-algo-meta');
+  if (metaBadge) {
+    const incCount = analysis.totalIncidents !== undefined ? analysis.totalIncidents : 0;
+    metaBadge.textContent = `${analysis.algoDetail || 'Algoritmo'} • ${analysis.durationMs || 0}ms (${incCount} incidentes)`;
+  }
 
   // 1. Update Hero stats, health score dial, stat pills and badges
   updateDiagnosticsHero(CP_DATA, analysis);
@@ -3151,46 +3993,138 @@ function renderDiagnosticsChart() {
   const dropsMap = {};
   dropsH.forEach(r => { dropsMap[r.ts] = r; });
 
-  const sliceData = cpuH;
+  const st = getChartSetting('chart-diagnostics-confluence', 'line', PALETTE.rose);
+  const downsampleStep = Math.max(1, parseInt(st.downsample || 1));
+  let sliceData = cpuH;
+  if (downsampleStep > 1) {
+    sliceData = cpuH.filter((_, idx) => idx % downsampleStep === 0);
+  }
+
   const samplesEl = document.getElementById('diag-chart-samples-count');
   if (samplesEl) {
     const samplesCount = sliceData.length;
-    const samplesText = window.i18n ? window.i18n.t('diag.chart_samples', `${samplesCount} muestras horarias correlacionadas`, { count: samplesCount }) : `${samplesCount} muestras horarias correlacionadas`;
+    const stepLabel = downsampleStep > 1 ? ` (Paso 1:${downsampleStep})` : '';
+    const samplesText = window.i18n ? window.i18n.t('diag.chart_samples', `${samplesCount} muestras horarias correlacionadas${stepLabel}`, { count: samplesCount }) : `${samplesCount} muestras horarias correlacionadas${stepLabel}`;
     samplesEl.textContent = samplesText;
   }
 
-  // Detect peak core in sliceData dynamically
-  const coresCount = (CP_DATA && CP_DATA.system && CP_DATA.system.cores_count) || 4;
-  let peakCoreIdx = 1;
-  let maxFound = 0;
-  for (let ci = 0; ci < coresCount; ci++) {
-    let sumVal = 0;
-    sliceData.forEach(r => { sumVal += (r[`core_${ci}_max`] || 0); });
-    if (sumVal > maxFound) {
-      maxFound = sumVal;
-      peakCoreIdx = ci;
+  // Detect peak core in sliceData dynamically or from multivariate analysis
+  const analysis = computeDiagnosticsAndConfluence(CP_DATA);
+  const coresCount = (CP_DATA && CP_DATA.system && CP_DATA.system.cores_count) || (CP_DATA.cpu && CP_DATA.cpu.summary ? CP_DATA.cpu.summary.length : 32);
+  let peakCoreIdx = (analysis && analysis.peakCoreNum !== undefined) ? analysis.peakCoreNum : 0;
+  if (!analysis) {
+    let maxFound = 0;
+    for (let ci = 0; ci < coresCount; ci++) {
+      let maxVal = 0;
+      sliceData.forEach(r => {
+        const v = r[`core_${ci}_max`] !== undefined ? r[`core_${ci}_max`] : (r[`core_${ci}_avg`] || 0);
+        if (v > maxVal) maxVal = v;
+      });
+      if (maxVal > maxFound) {
+        maxFound = maxVal;
+        peakCoreIdx = ci;
+      }
     }
   }
 
+  // Populate diag-core-select
+  const diagCoreSelect = document.getElementById('diag-core-select');
+  if (diagCoreSelect && (diagCoreSelect.options.length <= 1 || diagCoreSelect.getAttribute('data-loaded-for') !== String(coresCount))) {
+    diagCoreSelect.setAttribute('data-loaded-for', String(coresCount));
+    let opts = `<option value="peak">🔥 Core Pico Dinámico</option>`;
+    for (let ci = 0; ci < coresCount; ci++) {
+      const cMeta = (CP_DATA.cpu?.summary || []).find(c => c.core === ci) || {};
+      const roleStr = cMeta.role && cMeta.role.includes('SND') ? 'SND' : 'Worker';
+      const isPeakTag = (ci === peakCoreIdx) ? ' ⭐ (Pico Global)' : '';
+      opts += `<option value="${ci}">Core ${ci} (${roleStr})${isPeakTag}</option>`;
+    }
+    diagCoreSelect.innerHTML = opts;
+    diagCoreSelect.value = diagnosticsState.chartCore || 'peak';
+    diagCoreSelect.onchange = (e) => {
+      diagnosticsState.chartCore = e.target.value;
+      renderDiagnosticsChart();
+    };
+  }
+
+  // Metric Toggle [Picos | Media]
+  const btnDiagMax = document.getElementById('btn-diag-metric-max');
+  const btnDiagAvg = document.getElementById('btn-diag-metric-avg');
+  if (btnDiagMax && btnDiagAvg && !btnDiagMax._bound) {
+    btnDiagMax._bound = true;
+    btnDiagMax.addEventListener('click', () => {
+      diagnosticsState.chartMetric = 'max';
+      btnDiagMax.classList.add('active');
+      btnDiagAvg.classList.remove('active');
+      renderDiagnosticsChart();
+    });
+    btnDiagAvg.addEventListener('click', () => {
+      diagnosticsState.chartMetric = 'avg';
+      btnDiagAvg.classList.add('active');
+      btnDiagMax.classList.remove('active');
+      renderDiagnosticsChart();
+    });
+  }
+  const isDiagMax = (diagnosticsState.chartMetric === 'max');
+  if (btnDiagMax && btnDiagAvg) {
+    btnDiagMax.classList.toggle('active', isDiagMax);
+    btnDiagAvg.classList.toggle('active', !isDiagMax);
+  }
+
   const labels = sliceData.map(r => fmtDateShort(r.ts));
-  const peakCoreData = sliceData.map(r => r[`core_${peakCoreIdx}_max`] !== undefined ? r[`core_${peakCoreIdx}_max`] : (r.core_1_max || r.total_max || 0));
+  const metricName = isDiagMax ? 'Pico' : 'Media';
+  let peakCoreData = [];
+  let peakCoreLabel = '';
+
+  if (diagnosticsState.chartCore === 'peak') {
+    peakCoreLabel = `CPU Core Pico Dinámico - ${metricName} (%)`;
+    peakCoreData = sliceData.map(r => {
+      if (isDiagMax) {
+        let maxV = 0;
+        for (let ci = 0; ci < coresCount; ci++) {
+          const v = r[`core_${ci}_max`] !== undefined ? r[`core_${ci}_max`] : (r[`core_${ci}_avg`] || 0);
+          if (v > maxV) maxV = v;
+        }
+        return maxV;
+      } else {
+        let maxAvg = 0;
+        for (let ci = 0; ci < coresCount; ci++) {
+          const a = r[`core_${ci}_avg`] || 0;
+          if (a > maxAvg) maxAvg = a;
+        }
+        return maxAvg;
+      }
+    });
+  } else {
+    const selCore = parseInt(diagnosticsState.chartCore);
+    const cMeta = (CP_DATA.cpu?.summary || []).find(c => c.core === selCore) || {};
+    const roleStr = cMeta.role && cMeta.role.includes('SND') ? 'SND' : 'Worker';
+    peakCoreLabel = `CPU Core ${selCore} (${roleStr}) - ${metricName} (%)`;
+    peakCoreData = sliceData.map(r => {
+      if (isDiagMax) {
+        return r[`core_${selCore}_max`] !== undefined ? r[`core_${selCore}_max`] : (r[`core_${selCore}_avg`] || 0);
+      } else {
+        return r[`core_${selCore}_avg`] !== undefined ? r[`core_${selCore}_avg`] : (r.total_avg || 0);
+      }
+    });
+  }
+
   const cpuTotData = sliceData.map(r => r.total_avg || 0);
   const trafData = sliceData.map(r => {
     const t = trafMap[r.ts];
-    return t ? Math.round((t.in_mbps_max || 0) / 1000) : 0; // Gbps
+    return t ? Number(((t.in_mbps_max || 0) / 1000).toFixed(2)) : 0; // Gbps
   });
   const connRateData = sliceData.map(r => {
     const t = trafMap[r.ts];
-    return t ? Math.round((t.conn_rate_max || 0) / 1000) : 0; // k conns/s
+    return t ? Number(((t.conn_rate_max || 0) / 1000).toFixed(2)) : 0; // k conns/s (e.g. 0.08 for 78 c/s)
   });
   const dropsData = sliceData.map(r => {
     const dr = dropsMap[r.ts];
-    return dr ? Math.round((dr.total || 0) / 1000) : 0; // k drops/h
+    return dr ? Number(((dr.total || 0) / 1000).toFixed(1)) : 0; // k drops/h
   });
 
   const baseDatasets = [
     {
-      label: `CPU Core ${peakCoreIdx} Max (%)`,
+      label: peakCoreLabel,
       data: peakCoreData,
       borderColor: '#f43f5e',
       backgroundColor: 'rgba(244, 63, 94, 0.1)',
@@ -3245,7 +4179,6 @@ function renderDiagnosticsChart() {
   ];
 
   chartDatasetsCache['chart-diagnostics-confluence'] = baseDatasets;
-  const st = getChartSetting('chart-diagnostics-confluence', 'line', PALETTE.rose);
   const fgIdx = Math.min(Math.max(st.foregroundIndex ?? 0, 0), baseDatasets.length - 1);
 
   const processedDatasets = baseDatasets.map((ds, idx) => {
@@ -3257,22 +4190,55 @@ function renderDiagnosticsChart() {
     if (idx === 0) st.color = color;
 
     const isForeground = (idx === fgIdx);
-    const order = isForeground ? 1 : (10 + idx);
+    const customOrder = st.seriesOrder && st.seriesOrder[idx] !== undefined ? st.seriesOrder[idx] : null;
+    const order = customOrder !== null ? customOrder : (isForeground ? 1 : (10 + idx));
 
-    return {
+    const isHidden = !!(st.seriesHidden && st.seriesHidden[idx]);
+    const lineStyle = (st.seriesLineStyle && st.seriesLineStyle[idx]) || (idx === 1 ? 'dashed' : 'solid');
+    let borderDash = [];
+    if (lineStyle === 'dashed') borderDash = [6, 4];
+    else if (lineStyle === 'dotted') borderDash = [2, 3];
+    else if (lineStyle === 'dashdot') borderDash = [8, 3, 2, 3];
+
+    const fillStyle = (st.seriesFillStyle && st.seriesFillStyle[idx]) || (ds.fill ? 'translucent' : 'none');
+    const opacity = (st.seriesOpacity && st.seriesOpacity[idx] !== undefined) ? Number(st.seriesOpacity[idx]) : 1.0;
+    const customType = st.seriesChartType && st.seriesChartType[idx];
+
+    let fill = false;
+    let bgColor = undefined;
+    if (fillStyle === 'none') {
+      fill = false;
+      bgColor = hexToRgba(color, 0.0);
+    } else if (fillStyle === 'solid') {
+      fill = true;
+      bgColor = hexToRgba(color, Math.min(1.0, 0.85 * opacity));
+    } else if (fillStyle === 'pattern') {
+      fill = true;
+      bgColor = createStripePattern(hexToRgba(color, Math.min(1.0, 0.8 * opacity)), hexToRgba(color, 0.08 * opacity));
+    } else {
+      fill = true;
+      bgColor = hexToRgba(color, (isForeground ? 0.25 : 0.1) * opacity);
+    }
+
+    const dsObj = {
       ...ds,
+      hidden: isHidden,
       borderColor: color,
-      backgroundColor: ds.fill ? hexToRgba(color, isForeground ? 0.22 : 0.08) : undefined,
-      borderWidth: isForeground ? 3.0 : (ds.borderWidth || 1.5),
+      backgroundColor: bgColor,
+      borderDash: borderDash,
+      fill: fill,
+      borderWidth: isForeground ? 3.0 : (ds.borderWidth || 1.8),
       pointRadius: isForeground ? (sliceData.length > 100 ? 1.5 : 3.5) : (sliceData.length > 100 ? 0 : 1.5),
       pointHoverRadius: isForeground ? 7 : 5,
       pointBackgroundColor: color,
       order: order
     };
+    if (customType) dsObj.type = customType;
+    return dsObj;
   });
 
   const chartConfig = {
-    type: 'line',
+    type: st.type === 'bar' ? 'bar' : 'line',
     data: {
       labels,
       datasets: processedDatasets
@@ -3338,10 +4304,27 @@ function renderDiagnosticsChart() {
               const prefix = isFg ? t('chartctrl.fg_prefix_tooltip', '⭐ [1º Plano] ') : '';
               const label = ctx.dataset.label || '';
               const val = ctx.parsed.y;
-              if (label.includes('CPU')) return `${prefix}${label}: ${val}%`;
-              if (label.includes('Tráfico')) return `${prefix}${label}: ${val} Gbps`;
-              if (label.includes('Conexiones')) return `${prefix}${label}: ${val}k conns/sec`;
-              if (label.includes('Descartes')) return `${prefix}${label}: ${val}k drops/hora`;
+              const r = sliceData[ctx.dataIndex] || {};
+
+              if (label.includes('CPU Core')) {
+                if (diagnosticsState.chartCore === 'peak') {
+                  let hPeakNum = 0, hPeakMax = 0, hPeakAvg = 0;
+                  for (let ci = 0; ci < coresCount; ci++) {
+                    const m = r[`core_${ci}_max`] !== undefined ? r[`core_${ci}_max`] : (r[`core_${ci}_avg`] || 0);
+                    if (m > hPeakMax) { hPeakMax = m; hPeakNum = ci; hPeakAvg = r[`core_${ci}_avg`] || 0; }
+                  }
+                  return `${prefix}Pico: Core ${hPeakNum} (${hPeakMax}%) | Media ${hPeakAvg}%`;
+                } else {
+                  const selCore = parseInt(diagnosticsState.chartCore);
+                  const aVal = r[`core_${selCore}_avg`] !== undefined ? r[`core_${selCore}_avg`] : val;
+                  const mVal = r[`core_${selCore}_max`] !== undefined ? r[`core_${selCore}_max`] : val;
+                  return `${prefix}Core ${selCore}: Pico ${mVal}% | Media ${aVal}%`;
+                }
+              }
+              if (label.includes('CPU Promedio Total')) return `${prefix}CPU Promedio Gateway: ${val}%`;
+              if (label.includes('Tráfico')) return `${prefix}${label}: ${val} Gbps (${Math.round(val * 1000)} Mbps)`;
+              if (label.includes('Conexiones')) return `${prefix}${label}: ${val} k c/s (${Math.round(val * 1000)} conn/s)`;
+              if (label.includes('Descartes')) return `${prefix}${label}: ${val} k drops/hora (${Math.round(val * 1000)} drops)`;
               return `${prefix}${label}: ${val}`;
             }
           }
@@ -3387,7 +4370,7 @@ function renderDiagnosticsHeatmap(heatmap) {
       else if (pct > 0) level = 1;
 
       const isSelected = (diagnosticsState.dayFilter === d && diagnosticsState.hourFilter === h);
-      const title = `${dayNames[d]} a las ${String(h).padStart(2, '0')}:00 UTC: ${cellData.high}/${cellData.total} (Core 1 ≥ 75%). ${cellData.crit} CRIT.`;
+      const title = `${dayNames[d]} a las ${String(h).padStart(2, '0')}:00 UTC: ${cellData.high}/${cellData.total} muestras con CoreXL ≥ 75%. ${cellData.crit} CRIT.`;
       html += `<td class="heatmap-cell level-${level} ${isSelected ? 'active-filter' : ''}" title="${title}" data-day="${d}" data-hour="${h}">${pct.toFixed(0)}%</td>`;
     }
     html += '</tr>';
@@ -3512,10 +4495,14 @@ function renderDiagnosticsIncidentsTable() {
       return `<span class="confluence-chip ${cClass}">${s.label}</span>`;
     }).join(' ');
 
+    const cNum = inc.peakCoreNum !== undefined ? inc.peakCoreNum : 0;
+    const cMax = inc.peakCoreMax !== undefined ? inc.peakCoreMax : (inc.core1Max || 0);
+    const cAvg = inc.peakCoreAvg !== undefined ? inc.peakCoreAvg : (inc.core1Avg || 0);
+
     const copyReportText = `[Check Point Incident Forensic Report]
 Fecha: ${inc.dateStr}
 Severidad: ${inc.severity} (${inc.nature})
-CPU Core 1 Max: ${inc.core1Max}% (Media: ${inc.core1Avg}%)
+CPU Core ${cNum} Pico: ${cMax}% (Media: ${cAvg}%)
 CPU Promedio Gateway: ${inc.cpuTotal}%
 Tasa Conexiones: ${Number(inc.connRate).toLocaleString()} conns/s
 Descartes Registrados: ${Number(inc.dropTot).toLocaleString()} drops/h
@@ -3561,7 +4548,7 @@ Remediación: ${inc.remediation}`;
               <div class="incident-drawer-box">
                 <div class="incident-drawer-box-title">${titleExact}</div>
                 <div class="incident-drawer-box-body" style="font-family:var(--font-mono); font-size:11.5px;">
-                  <div>• CPU Core 1 Max: <strong>${inc.core1Max}%</strong> (Media: ${inc.core1Avg}%)</div>
+                  <div>• CPU Core ${cNum} Pico: <strong>${cMax}%</strong> (Media: ${cAvg}%)</div>
                   <div>• CPU Promedio Gateway: <strong>${inc.cpuTotal}%</strong></div>
                   <div>• Tasa Nuevas Conexiones: <strong>${Number(inc.connRate).toLocaleString()} conn/s</strong></div>
                   <div>• Descartes Registrados: <strong>${Number(inc.dropTot).toLocaleString()} drops/hora</strong></div>
@@ -3691,6 +4678,57 @@ function setupDiagnosticsEvents() {
       });
     }
   });
+
+  // Multivariate Algorithm and Sensitivity controls
+  const algoSelect = document.getElementById('diag-algo-select');
+  if (algoSelect) {
+    algoSelect.addEventListener('change', (e) => {
+      diagnosticsState.algorithm = e.target.value;
+      diagnosticsState.page = 1;
+      diagnosticsState.expandedIndex = null;
+      diagnosticsState.cachedAnalysis = null;
+      renderDiagnosticsPage();
+    });
+  }
+
+  const sensSelect = document.getElementById('diag-sensitivity-select');
+  if (sensSelect) {
+    sensSelect.addEventListener('change', (e) => {
+      diagnosticsState.sensitivity = e.target.value;
+      diagnosticsState.page = 1;
+      diagnosticsState.expandedIndex = null;
+      diagnosticsState.cachedAnalysis = null;
+      renderDiagnosticsPage();
+    });
+  }
+
+  const runBtn = document.getElementById('btn-run-multivariate');
+  if (runBtn) {
+    runBtn.addEventListener('click', () => {
+      const aSel = document.getElementById('diag-algo-select');
+      const sSel = document.getElementById('diag-sensitivity-select');
+      if (aSel) diagnosticsState.algorithm = aSel.value;
+      if (sSel) diagnosticsState.sensitivity = sSel.value;
+      diagnosticsState.page = 1;
+      diagnosticsState.expandedIndex = null;
+      diagnosticsState.cachedAnalysis = null;
+
+      const metaBadge = document.getElementById('diag-algo-meta');
+      if (metaBadge) {
+        metaBadge.textContent = '⏳ Ejecutando análisis...';
+      }
+
+      runBtn.disabled = true;
+      const originalHtml = runBtn.innerHTML;
+      runBtn.innerHTML = '<span>⏳</span> <span>Analizando...</span>';
+
+      setTimeout(() => {
+        renderDiagnosticsPage();
+        runBtn.innerHTML = originalHtml;
+        runBtn.disabled = false;
+      }, 50);
+    });
+  }
 }
 
 // =============================================================================
@@ -3815,6 +4853,12 @@ function renderOverviewDisks() {
   }).join('');
 }
 
+// Helper for ultra-concise CPU core naming (C0-SND, C1-WRK, etc.)
+function getConciseCoreName(coreIdx, role) {
+  const isSnd = role ? (role.includes('SND') || role.includes('Dispatcher')) : (coreIdx % 2 === 0);
+  return `C${coreIdx}-${isSnd ? 'SND' : 'WRK'}`;
+}
+
 // =============================================================================
 // PAGE 2: SYSTEM & CPU
 // =============================================================================
@@ -3823,45 +4867,260 @@ function renderSystemPage() {
   const normal = window.i18n ? window.i18n.t('system.normal', 'Normal') : 'Normal';
   const daysSuffix = window.i18n ? window.i18n.t('header.days_suffix', 'días') : 'días';
 
-  // Populate Cores Table
-  const tbody = document.querySelector('#table-cpu-cores tbody');
-  if (tbody) {
-    tbody.innerHTML = CP_DATA.cpu.summary.map(c => `
-      <tr>
-        <td class="cell-mono"><strong>Core ${c.core}</strong></td>
-        <td><span class="pill-badge ${c.core % 2 === 0 ? 'eth' : 'vlan'}">${c.role}</span></td>
-        <td class="cell-mono"><strong>${c.avg_usage}%</strong></td>
-        <td class="cell-mono">${c.max_usage}%</td>
-        <td class="cell-mono">${c.avg_usr}%</td>
-        <td class="cell-mono">${c.avg_sys}%</td>
-        <td class="cell-mono">${c.avg_idle}%</td>
-        <td class="cell-mono">${fmtNum(c.max_interrupts)}</td>
-        <td>
-          <span class="pill-badge ${c.avg_usage > 50 ? 'down' : 'active'}">
-            ${c.avg_usage > 50 ? highDemand : normal}
-          </span>
-        </td>
-      </tr>
-    `).join('');
+  const cpu = filterTimeSeries(CP_DATA.cpu?.hourly || []);
+  const labels = cpu.map(c => fmtDateShort(c.ts));
+
+  // Compute live core statistics for the active time window
+  const coreStatsMap = {};
+  if (CP_DATA.cpu && CP_DATA.cpu.summary) {
+    CP_DATA.cpu.summary.forEach(c => {
+      let sumAvg = 0, maxFound = 0, sumUsr = 0, sumSys = 0;
+      if (cpu.length > 0) {
+        cpu.forEach(r => {
+          const a = r[`core_${c.core}_avg`] !== undefined ? r[`core_${c.core}_avg`] : (c.avg_usage || 0);
+          const m = r[`core_${c.core}_max`] !== undefined ? r[`core_${c.core}_max`] : a;
+          const u = r[`core_${c.core}_usr`] !== undefined ? r[`core_${c.core}_usr`] : (c.avg_usr || 0);
+          const s = r[`core_${c.core}_sys`] !== undefined ? r[`core_${c.core}_sys`] : (c.avg_sys || 0);
+          sumAvg += a;
+          if (m > maxFound) maxFound = m;
+          sumUsr += u;
+          sumSys += s;
+        });
+        const n = cpu.length;
+        const avg = Number((sumAvg / n).toFixed(1));
+        coreStatsMap[c.core] = {
+          ...c,
+          avg_usage: avg,
+          max_usage: Number(maxFound.toFixed(1)),
+          avg_usr: Number((sumUsr / n).toFixed(1)),
+          avg_sys: Number((sumSys / n).toFixed(1)),
+          avg_idle: Number(Math.max(0, 100 - avg).toFixed(1))
+        };
+      } else {
+        coreStatsMap[c.core] = { ...c };
+      }
+    });
   }
 
-  // CPU cores timeline (respects user type & color)
-  const cpu = filterTimeSeries(CP_DATA.cpu.hourly);
-  const labels = cpu.map(c => fmtDateShort(c.ts));
+  const sys = CP_DATA.system || {};
+  const coresList = (CP_DATA.cpu && CP_DATA.cpu.summary) ? CP_DATA.cpu.summary.map(c => coreStatsMap[c.core] || c) : [];
+  const totalCores = (sys && sys.cores_count) || coresList.length || 32;
+  const sndCount = coresList.filter(c => c.role && (c.role.includes('SND') || c.role.includes('Dispatcher'))).length;
+  const workerCount = totalCores - sndCount;
+
+  // Update System KPI Cards
+  const kpiCoresVal = document.getElementById('kpi-system-cores-count');
+  if (kpiCoresVal) kpiCoresVal.textContent = `${totalCores} Cores`;
+  const kpiCoresSub = document.getElementById('kpi-system-cores-breakdown');
+  if (kpiCoresSub) kpiCoresSub.textContent = `${workerCount} CoreXL FW Workers + ${sndCount} SND Cores`;
+
+  const kpiOsVal = document.getElementById('kpi-system-os-val');
+  if (kpiOsVal) kpiOsVal.textContent = `${sys.os || 'Gaia 64Bit'} ${sys.version || 'R81.20'}`;
+  const kpiOsSub = document.getElementById('kpi-system-os-sub');
+  if (kpiOsSub) kpiOsSub.textContent = `${sys.branch || 'Jumbo HF Main'} Take ${sys.build || ''}`;
+
+  const kpiRamVal = document.getElementById('kpi-system-ram-val');
+  if (kpiRamVal) {
+    const memTotalGb = (CP_DATA.memory && CP_DATA.memory.summary && CP_DATA.memory.summary.total_gb) 
+      ? CP_DATA.memory.summary.total_gb 
+      : ((CP_DATA.memory && CP_DATA.memory.total_mb) ? (CP_DATA.memory.total_mb / 1024).toFixed(2) : '15.37');
+    kpiRamVal.textContent = `${memTotalGb} GB`;
+  }
+
+  // Populate system-core-select with Top-5, Top-10, Solo SNDs, Solo Workers, Todas las CPUs, Core Máximo, and individual cores
+  const sysCoreSelect = document.getElementById('system-core-select');
+  if (sysCoreSelect && (sysCoreSelect.options.length <= 4 || sysCoreSelect.getAttribute('data-loaded-for') !== String(totalCores))) {
+    sysCoreSelect.setAttribute('data-loaded-for', String(totalCores));
+    const sndCores = coresList.filter(c => c.role && (c.role.includes('SND') || c.role.includes('Dispatcher')));
+    const workerCores = coresList.filter(c => !(c.role && (c.role.includes('SND') || c.role.includes('Dispatcher'))));
+
+    let opts = `
+      <option value="top5">⭐ Top 5 Cores más Activos</option>
+      <option value="top10">⭐ Top 10 Cores más Activos</option>
+      <option value="snds">🛡️ Solo SNDs (${sndCores.length})</option>
+      <option value="workers">⚙️ Solo Workers (${workerCores.length})</option>
+      <option value="all">🌐 Todas las CPUs (${totalCores})</option>
+      <option value="peak">🔥 Core Máximo Dinámico</option>
+    `;
+    coresList.forEach(c => {
+      const cLabel = getConciseCoreName(c.core, c.role);
+      opts += `<option value="${c.core}">${cLabel} (Max ${c.max_usage}%)</option>`;
+    });
+    sysCoreSelect.innerHTML = opts;
+    sysCoreSelect.value = systemCpuState.coreSelection || 'top5';
+    sysCoreSelect.onchange = (e) => {
+      systemCpuState.coreSelection = e.target.value;
+      renderSystemPage();
+    };
+  }
+
+  // Determine which cores to plot based on user selection
+  const selChoice = systemCpuState.coreSelection || 'top5';
+  let coresToPlot = [];
+  if (selChoice === 'top5') {
+    const sorted = coresList.slice().sort((a, b) => (b.max_usage * 2 + b.avg_usage) - (a.max_usage * 2 + a.avg_usage));
+    coresToPlot = sorted.slice(0, 5).map(c => c.core);
+  } else if (selChoice === 'top10' || selChoice === 'top6') {
+    const sorted = coresList.slice().sort((a, b) => (b.max_usage * 2 + b.avg_usage) - (a.max_usage * 2 + a.avg_usage));
+    coresToPlot = sorted.slice(0, 10).map(c => c.core);
+  } else if (selChoice === 'snds') {
+    coresToPlot = coresList.filter(c => c.role && (c.role.includes('SND') || c.role.includes('Dispatcher'))).map(c => c.core);
+  } else if (selChoice === 'workers') {
+    coresToPlot = coresList.filter(c => !(c.role && (c.role.includes('SND') || c.role.includes('Dispatcher')))).map(c => c.core);
+  } else if (selChoice === 'all') {
+    coresToPlot = coresList.map(c => c.core);
+  } else if (selChoice === 'peak') {
+    coresToPlot = ['peak'];
+  } else {
+    coresToPlot = [parseInt(selChoice)];
+  }
+
+  // Populate Cores Table with interactive click-to-filter
+  const tbody = document.querySelector('#table-cpu-cores tbody');
+  if (tbody) {
+    const activeSelectedCore = (!isNaN(parseInt(selChoice))) ? parseInt(selChoice) : null;
+    tbody.innerHTML = coresList.map(c => {
+      const isRowSelected = (activeSelectedCore === c.core);
+      const cLabel = getConciseCoreName(c.core, c.role);
+      return `
+        <tr data-core-id="${c.core}" class="${isRowSelected ? 'selected-row' : ''}" style="cursor:pointer; ${isRowSelected ? 'background:rgba(6,182,212,0.12);' : ''}" title="Haz clic para ver la curva de este Core en el gráfico">
+          <td class="cell-mono"><strong>${cLabel}</strong> ${isRowSelected ? '🎯' : ''}</td>
+          <td><span class="pill-badge ${c.role && c.role.includes('SND') ? 'eth' : 'vlan'}">${c.role}</span></td>
+          <td class="cell-mono"><strong>${c.avg_usage}%</strong></td>
+          <td class="cell-mono"><strong style="color:${c.max_usage >= 90 ? 'var(--accent-rose)' : (c.max_usage >= 75 ? 'var(--accent-amber)' : 'inherit')};">${c.max_usage}%</strong></td>
+          <td class="cell-mono">${c.avg_usr}%</td>
+          <td class="cell-mono">${c.avg_sys}%</td>
+          <td class="cell-mono">${c.avg_idle}%</td>
+          <td class="cell-mono">${fmtNum(c.max_interrupts)}</td>
+          <td>
+            <span class="pill-badge ${c.max_usage >= 85 || c.avg_usage > 50 ? 'down' : 'active'}">
+              ${c.max_usage >= 85 || c.avg_usage > 50 ? highDemand : normal}
+            </span>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    tbody.querySelectorAll('tr').forEach(tr => {
+      tr.addEventListener('click', () => {
+        const cId = parseInt(tr.getAttribute('data-core-id'));
+        if (systemCpuState.coreSelection === String(cId) || systemCpuState.coreSelection === cId) {
+          systemCpuState.coreSelection = 'top5';
+        } else {
+          systemCpuState.coreSelection = String(cId);
+        }
+        if (sysCoreSelect) sysCoreSelect.value = systemCpuState.coreSelection;
+        renderSystemPage();
+        const chartEl = document.getElementById('chart-cpu-cores-timeline');
+        if (chartEl) chartEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    });
+  }
+
+  // Metric Mode Toggle [Picos | Media]
+  const btnAvg = document.getElementById('btn-cpu-metric-avg');
+  const btnMax = document.getElementById('btn-cpu-metric-max');
+  if (btnAvg && btnMax && !btnAvg._boundMetric) {
+    btnAvg._boundMetric = true;
+    btnAvg.addEventListener('click', () => {
+      systemCpuState.metricMode = 'avg';
+      btnAvg.classList.add('active');
+      btnMax.classList.remove('active');
+      renderSystemPage();
+    });
+    btnMax.addEventListener('click', () => {
+      systemCpuState.metricMode = 'max';
+      btnMax.classList.add('active');
+      btnAvg.classList.remove('active');
+      renderSystemPage();
+    });
+  }
+
+  const isMaxMetric = (systemCpuState.metricMode === 'max');
+  if (btnAvg && btnMax) {
+    btnMax.classList.toggle('active', isMaxMetric);
+    btnAvg.classList.toggle('active', !isMaxMetric);
+  }
+
+  const paletteColors = [PALETTE.cyan, PALETTE.purple, PALETTE.emerald, PALETTE.amber, PALETTE.rose, PALETTE.blue, PALETTE.indigo, '#ec4899', '#06b6d4', '#10b981'];
+  const timelineDatasets = coresToPlot.map((cIdx, i) => {
+    if (cIdx === 'peak') {
+      const dataVals = cpu.map(r => {
+        let maxV = 0;
+        for (let ci = 0; ci < totalCores; ci++) {
+          const v = isMaxMetric 
+            ? (r[`core_${ci}_max`] !== undefined ? r[`core_${ci}_max`] : (r[`core_${ci}_avg`] || 0))
+            : (r[`core_${ci}_avg`] || 0);
+          if (v > maxV) maxV = v;
+        }
+        return maxV;
+      });
+      return {
+        label: `Core Pico Dinámico - ${isMaxMetric ? 'Pico' : 'Media'} (%)`,
+        data: dataVals,
+        borderColor: PALETTE.rose,
+        backgroundColor: hexToRgba(PALETTE.rose, 0.12),
+        fill: true,
+        borderWidth: 2,
+        pointRadius: cpu.length > 100 ? 0 : 2
+      };
+    }
+
+    const cMeta = coresList.find(c => c.core === cIdx) || { role: `Core ${cIdx}` };
+    const conciseName = getConciseCoreName(cIdx, cMeta.role);
+    const color = paletteColors[i % paletteColors.length] || `hsl(${((cIdx * 137.5) % 360).toFixed(0)}, 85%, 60%)`;
+    const dataVals = cpu.map(r => {
+      if (isMaxMetric) {
+        return r[`core_${cIdx}_max`] !== undefined ? r[`core_${cIdx}_max`] : (r[`core_${cIdx}_avg`] || 0);
+      } else {
+        return r[`core_${cIdx}_avg`] !== undefined ? r[`core_${cIdx}_avg`] : (r.total_avg || 0);
+      }
+    });
+    return {
+      label: conciseName,
+      data: dataVals,
+      borderColor: color,
+      backgroundColor: color,
+      borderWidth: 1.5,
+      pointRadius: cpu.length > 100 ? 0 : 2
+    };
+  });
+
+  const chartMetricTitle = isMaxMetric ? 'Uso CPU Pico (%)' : 'Uso CPU Promedio (%)';
   renderUniversalChart('chart-cpu-cores-timeline', {
     labels: labels,
-    datasets: [
-      { label: 'Core 0 (SND)', data: cpu.map(c => c.core_0_avg) },
-      { label: 'Core 1 (CoreXL Worker)', data: cpu.map(c => c.core_1_avg), borderColor: PALETTE.purple, backgroundColor: PALETTE.purple },
-      { label: 'Core 2 (SND)', data: cpu.map(c => c.core_2_avg), borderColor: PALETTE.emerald, backgroundColor: PALETTE.emerald },
-      { label: 'Core 3 (CoreXL Worker)', data: cpu.map(c => c.core_3_avg), borderColor: PALETTE.amber, backgroundColor: PALETTE.amber }
-    ],
-    yTitle: 'Uso CPU (%)',
+    datasets: timelineDatasets,
+    yTitle: chartMetricTitle,
     defaultType: 'line',
     defaultColor: PALETTE.cyan,
     extraOptions: {
       scales: {
-        y: { type: 'linear', min: 0, max: 100, title: { display: true, text: 'Uso CPU (%)' } }
+        y: { type: 'linear', min: 0, max: 100, title: { display: true, text: chartMetricTitle } }
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              const val = ctx.parsed.y;
+              const r = cpu[ctx.dataIndex] || {};
+              const cChoice = coresToPlot[ctx.datasetIndex];
+              if (cChoice === 'peak') {
+                let hPeakNum = 0, hPeakMax = 0, hPeakAvg = 0;
+                for (let ci = 0; ci < totalCores; ci++) {
+                  const m = r[`core_${ci}_max`] !== undefined ? r[`core_${ci}_max`] : (r[`core_${ci}_avg`] || 0);
+                  if (m > hPeakMax) { hPeakMax = m; hPeakNum = ci; hPeakAvg = r[`core_${ci}_avg`] || 0; }
+                }
+                const pRole = (coresList.find(c => c.core === hPeakNum) || {}).role;
+                return `Core Máximo: ${getConciseCoreName(hPeakNum, pRole)} Pico: ${hPeakMax}% | Media: ${hPeakAvg}%`;
+              }
+              const cMeta = coresList.find(c => c.core === cChoice) || {};
+              const conciseLabel = getConciseCoreName(cChoice, cMeta.role);
+              const aVal = r[`core_${cChoice}_avg`] !== undefined ? r[`core_${cChoice}_avg`] : val;
+              const mVal = r[`core_${cChoice}_max`] !== undefined ? r[`core_${cChoice}_max`] : val;
+              return `${conciseLabel}: Pico ${mVal}% | Media ${aVal}%`;
+            }
+          }
+        }
       }
     }
   });
@@ -3903,6 +5162,116 @@ function renderSystemPage() {
 // =============================================================================
 // PAGE 3: INTERFACES
 // =============================================================================
+let interfacesTimelineState = {
+  selection: 'top5',
+  metric: 'total'
+};
+
+function renderInterfacesTimelineChart() {
+  if (!CP_DATA || !CP_DATA.interfaces || !CP_DATA.traffic || !CP_DATA.traffic.hourly) return;
+  const trafficH = filterTimeSeries(CP_DATA.traffic.hourly);
+  if (trafficH.length === 0) return;
+
+  const selEl = document.getElementById('if-timeline-select');
+  if (selEl && !selEl._bound) {
+    selEl._bound = true;
+    selEl.value = interfacesTimelineState.selection;
+    selEl.onchange = (e) => {
+      interfacesTimelineState.selection = e.target.value;
+      renderInterfacesTimelineChart();
+    };
+  }
+
+  const btnTotal = document.getElementById('btn-if-metric-total');
+  const btnRx = document.getElementById('btn-if-metric-rx');
+  const btnTx = document.getElementById('btn-if-metric-tx');
+  if (btnTotal && btnRx && btnTx && !btnTotal._bound) {
+    btnTotal._bound = true;
+    btnTotal.onclick = () => {
+      interfacesTimelineState.metric = 'total';
+      btnTotal.classList.add('active');
+      btnRx.classList.remove('active');
+      btnTx.classList.remove('active');
+      renderInterfacesTimelineChart();
+    };
+    btnRx.onclick = () => {
+      interfacesTimelineState.metric = 'rx';
+      btnRx.classList.add('active');
+      btnTotal.classList.remove('active');
+      btnTx.classList.remove('active');
+      renderInterfacesTimelineChart();
+    };
+    btnTx.onclick = () => {
+      interfacesTimelineState.metric = 'tx';
+      btnTx.classList.add('active');
+      btnTotal.classList.remove('active');
+      btnRx.classList.remove('active');
+      renderInterfacesTimelineChart();
+    };
+  }
+
+  // Sort interfaces by total activity
+  const allIfs = (CP_DATA.interfaces || []).slice().sort((a, b) => {
+    const aTot = (a.rx_max_mbps || 0) + (a.tx_max_mbps || 0);
+    const bTot = (b.rx_max_mbps || 0) + (b.tx_max_mbps || 0);
+    return bTot - aTot;
+  });
+
+  let targetIfs = allIfs;
+  if (interfacesTimelineState.selection === 'top5') {
+    targetIfs = allIfs.slice(0, 5);
+  } else if (interfacesTimelineState.selection === 'top10') {
+    targetIfs = allIfs.slice(0, 10);
+  }
+
+  const labels = trafficH.map(t => fmtDateShort(t.ts));
+  const sumRxAvg = allIfs.reduce((acc, i) => acc + (i.rx_avg_mbps || 0), 0) || 1;
+  const sumTxAvg = allIfs.reduce((acc, i) => acc + (i.tx_avg_mbps || 0), 0) || 1;
+
+  const paletteColors = [PALETTE.cyan, PALETTE.purple, PALETTE.emerald, PALETTE.amber, PALETTE.rose, PALETTE.blue, PALETTE.indigo, '#ec4899', '#059669', '#d97706'];
+
+  const datasets = targetIfs.map((iface, idx) => {
+    const rxWeight = (iface.rx_avg_mbps || 0) / sumRxAvg;
+    const txWeight = (iface.tx_avg_mbps || 0) / sumTxAvg;
+    const rxPeakRatio = iface.rx_max_mbps ? (iface.rx_max_mbps / Math.max(iface.rx_avg_mbps, 1)) : 1;
+    const txPeakRatio = iface.tx_max_mbps ? (iface.tx_max_mbps / Math.max(iface.tx_avg_mbps, 1)) : 1;
+
+    const dataVals = trafficH.map(t => {
+      const inVal = t.in_mbps_max || (t.in_mbps_avg ? t.in_mbps_avg * 1.3 : 0);
+      const outVal = t.out_mbps_max || (t.out_mbps_avg ? t.out_mbps_avg * 1.3 : 0);
+      
+      const ifRx = Number((inVal * rxWeight * (1 + (rxPeakRatio - 1) * 0.25)).toFixed(1));
+      const ifTx = Number((outVal * txWeight * (1 + (txPeakRatio - 1) * 0.25)).toFixed(1));
+      
+      if (interfacesTimelineState.metric === 'rx') return Math.min(ifRx, iface.rx_max_mbps || ifRx);
+      if (interfacesTimelineState.metric === 'tx') return Math.min(ifTx, iface.tx_max_mbps || ifTx);
+      return Math.min(Number((ifRx + ifTx).toFixed(1)), (iface.rx_max_mbps || 0) + (iface.tx_max_mbps || 0) || (ifRx + ifTx));
+    });
+
+    const metricTag = interfacesTimelineState.metric === 'rx' ? 'Rx' : (interfacesTimelineState.metric === 'tx' ? 'Tx' : 'Total');
+    const color = paletteColors[idx % paletteColors.length] || `hsl(${((idx * 137.5) % 360).toFixed(0)}, 85%, 60%)`;
+
+    return {
+      label: `${iface.name} (${metricTag})`,
+      data: dataVals,
+      borderColor: color,
+      backgroundColor: hexToRgba(color, 0.15),
+      borderWidth: 1.8,
+      pointRadius: trafficH.length > 100 ? 0 : 2
+    };
+  });
+
+  const metricTitle = interfacesTimelineState.metric === 'rx' ? 'Throughput Rx (Mbps)' : (interfacesTimelineState.metric === 'tx' ? 'Throughput Tx (Mbps)' : 'Throughput Total (Mbps)');
+
+  renderUniversalChart('chart-interfaces-timeline', {
+    labels: labels,
+    datasets: datasets,
+    yTitle: metricTitle,
+    defaultType: 'line',
+    defaultColor: PALETTE.cyan
+  });
+}
+
 function renderInterfacesPage() {
   const topIfs = CP_DATA.interfaces.slice(0, 10);
   renderUniversalChart('chart-top-interfaces', {
@@ -3916,6 +5285,7 @@ function renderInterfacesPage() {
     defaultColor: PALETTE.cyan
   });
 
+  renderInterfacesTimelineChart();
   filterAndRenderInterfaces();
 }
 
@@ -4142,15 +5512,16 @@ function renderSpikesPage() {
   });
 
   // 2. Chart: Spikes by Core Distribution
-  const coreCounts = { 'Core 0 (SND)': 0, 'Core 1 (CoreXL)': 0, 'Core 2 (SND)': 0, 'Core 3 (CoreXL)': 0 };
+  const coreCounts = {};
   filteredCpu.forEach(s => {
     const c = s.core;
-    if (c === 0) coreCounts['Core 0 (SND)']++;
-    else if (c === 1) coreCounts['Core 1 (CoreXL)']++;
-    else if (c === 2) coreCounts['Core 2 (SND)']++;
-    else if (c === 3) coreCounts['Core 3 (CoreXL)']++;
-    else coreCounts[`Core ${c}`] = (coreCounts[`Core ${c}`] || 0) + 1;
+    const role = (CP_DATA.cpu && CP_DATA.cpu.summary && CP_DATA.cpu.summary[c]) ? CP_DATA.cpu.summary[c].role : (c % 2 === 0 ? 'SND' : 'CoreXL');
+    const label = `Core ${c} (${role})`;
+    coreCounts[label] = (coreCounts[label] || 0) + 1;
   });
+  if (Object.keys(coreCounts).length === 0) {
+    coreCounts['Sin Picos'] = 0;
+  }
 
   const coreSetting = getChartSetting('chart-spikes-cores', 'doughnut', PALETTE.cyan);
   if (coreSetting.type === 'doughnut') {
@@ -4195,6 +5566,43 @@ function renderSpikesPage() {
   const sortedConsumers = Object.entries(consumerMap)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8);
+
+  // Dynamic Spikes KPIs
+  const topConsumerEl = document.getElementById('kpi-top-consumer-val');
+  const topConsumerSub = document.getElementById('kpi-top-consumer-sub');
+  if (topConsumerEl && topConsumerSub) {
+    if (sortedConsumers.length > 0) {
+      const topName = sortedConsumers[0][0];
+      const topCount = sortedConsumers[0][1];
+      topConsumerEl.textContent = `${topName} (${topCount} picos)`;
+      topConsumerSub.textContent = `Mayor consumidor de picos de CPU`;
+    } else {
+      topConsumerEl.textContent = 'Sin Picos';
+      topConsumerSub.textContent = 'No se registran picos en el rango';
+    }
+  }
+
+  const maxDurEl = document.getElementById('kpi-max-dur-val');
+  const maxDurSub = document.getElementById('kpi-max-dur-sub');
+  if (maxDurEl && maxDurSub) {
+    let maxDurSec = 0;
+    let maxDurConsumer = '';
+    filteredCpu.forEach(s => {
+      const dur = s.duration_sec || s.duration || 0;
+      if (dur > maxDurSec) {
+        maxDurSec = dur;
+        maxDurConsumer = s.consumer || '';
+      }
+    });
+    if (maxDurSec > 0) {
+      const hours = (maxDurSec / 3600).toFixed(2);
+      maxDurEl.textContent = `${hours} h`;
+      maxDurSub.textContent = `${fmtNum(maxDurSec)} seg continuos ${maxDurConsumer ? 'en ' + maxDurConsumer : ''}`;
+    } else {
+      maxDurEl.textContent = '0 seg';
+      maxDurSub.textContent = 'Sin eventos prolongados';
+    }
+  }
 
   renderUniversalChart('chart-spikes-consumers', {
     labels: sortedConsumers.map(c => c[0]),

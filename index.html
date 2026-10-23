@@ -33,7 +33,7 @@
           <span class="status-dot"></span>
           <strong data-i18n="sidebar.node_active">Nodo Activo</strong>
         </span>
-        <span style="font-family: var(--font-mono); color: var(--accent-emerald);" data-i18n="sidebar.cores_count">4 Cores</span>
+        <span style="font-family: var(--font-mono); color: var(--accent-emerald);" id="sidebar-node-cores">32 Cores</span>
       </div>
     </div>
 
@@ -52,7 +52,7 @@
       <a class="nav-item" data-page="system">
         <span class="icon">🖥️</span>
         <span data-i18n="sidebar.nav_system">Sistema y CPU</span>
-        <span class="nav-badge" id="badge-cores" data-i18n="sidebar.badge_cores">4 Cores</span>
+        <span class="nav-badge" id="badge-cores">32 Cores</span>
       </a>
       <a class="nav-item" data-page="interfaces">
         <span class="icon">🌐</span>
@@ -563,198 +563,49 @@
             </div>
           </div>
 
+          <!-- Multivariate Analysis Configuration & Tuning Bar -->
+          <div class="diag-algo-toolbar">
+            <div class="algo-control-group">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <label for="diag-algo-select" style="font-size:calc(12px * var(--font-scale, 1)); font-weight:600; color:var(--text-dim); display:flex; align-items:center; gap:4px;">
+                  <span>🧠</span> <span data-i18n="diag.algo_label">Motor Multivariante:</span>
+                </label>
+                <select id="diag-algo-select" class="select-input" style="padding:6px 12px; font-size:calc(12px * var(--font-scale, 1)); min-width:230px;">
+                  <option value="isolation_forest" selected>🌲 Isolation Forest (Árboles No Lineales)</option>
+                  <option value="mahalanobis">📐 Distancia de Mahalanobis (Covarianza Robusta)</option>
+                  <option value="robust_zscore">📊 Robust Z-Score / MAD (Mediana Adaptativa)</option>
+                  <option value="dbscan">🌐 DBSCAN (Densidad & Ruido Espacial)</option>
+                </select>
+              </div>
+
+              <div style="display:flex; align-items:center; gap:8px;">
+                <label for="diag-sensitivity-select" style="font-size:calc(12px * var(--font-scale, 1)); font-weight:600; color:var(--text-dim);">
+                  <span data-i18n="diag.sensitivity_label">Sensibilidad:</span>
+                </label>
+                <select id="diag-sensitivity-select" class="select-input" style="padding:6px 10px; font-size:calc(12px * var(--font-scale, 1));">
+                  <option value="high" data-i18n="diag.sens_high">Alta (95%)</option>
+                  <option value="standard" selected data-i18n="diag.sens_standard">Estándar (98%)</option>
+                  <option value="strict" data-i18n="diag.sens_strict">Estricta (99.5%)</option>
+                </select>
+              </div>
+
+              <button id="btn-run-multivariate" class="btn btn-sm btn-primary" style="display:flex; align-items:center; gap:6px;">
+                <span>⚡</span> <span data-i18n="diag.btn_reanalyze">Ejecutar Análisis</span>
+              </button>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span id="diag-algo-meta" class="algo-meta-badge">
+                Isolation Forest (100 iTrees) • 0ms
+              </span>
+            </div>
+          </div>
+
           <div style="padding: 20px 24px;">
             <div class="problems-audit-grid" id="problems-audit-grid">
-
-              <!-- Problem 1: CoreXL Imbalance -->
-              <div class="problem-audit-card severity-crit">
-                <div class="problem-card-top">
-                  <div class="problem-card-title" data-i18n="diag.p1_title">Saturación y Desequilibrio en CoreXL FW Worker #1 (fwk0_1)</div>
-                  <span class="problem-card-badge crit" data-i18n="diag.badge_critical">Crítico</span>
-                </div>
-                <div class="problem-card-evidence">
-                  <strong data-i18n="diag.evidence_label">Evidencia en tablas:</strong> <span data-i18n="diag.p1_evidence">Core 1 acumula <strong>898 picos de CPU</strong> en Spike Detective (45.4% del total), con picos sostenidos del <strong>100%</strong> y duraciones de hasta <strong>7,711s (2.1 horas)</strong>. Los cores SND (0 y 2) promedian solo 11% de CPU.</span>
-                </div>
-                <div class="problem-card-confluence">
-                  <span style="color:var(--text-dim); font-weight:600;" data-i18n="diag.confluence_label">Confluencia Temporal:</span>
-                  <div class="confluence-chips-row">
-                    <span class="confluence-chip cpu" data-i18n="diag.p1_chip1">🔴 CPU Core 1: 100%</span>
-                    <span class="confluence-chip conns" data-i18n="diag.p1_chip2">🟣 Conn Rate: 396k/s</span>
-                    <span class="confluence-chip traffic" data-i18n="diag.p1_chip3">🔵 Tráfico F2F</span>
-                  </div>
-                </div>
-                <div class="problem-card-remediation">
-                  <strong data-i18n="diag.rootcause_label">Causa Raíz & Solución:</strong> <span data-i18n="diag.p1_remedy">Desbalanceo de afinidad en CoreXL Dispatcher. Las conexiones pesadas no se reparten uniformemente.</span>
-                  <br>
-                  <code>fw ctl multik dynamic_disp on</code> · <code>sim affinity -a</code>
-                </div>
+              <div style="text-align:center; padding:32px; color:var(--text-muted); grid-column:1/-1;">
+                <div class="spinner"></div> Cargando auditoría sistemática...
               </div>
-
-              <!-- Problem 2: SecureXL Enqueue Fails -->
-              <div class="problem-audit-card severity-crit">
-                <div class="problem-card-top">
-                  <div class="problem-card-title" data-i18n="diag.p2_title">Colapso de Despachador SecureXL: 5.83B Enqueue Fails F2P</div>
-                  <span class="problem-card-badge crit" data-i18n="diag.badge_critical">Crítico</span>
-                </div>
-                <div class="problem-card-evidence">
-                  <strong data-i18n="diag.evidence_label">Evidencia en tablas:</strong> <span data-i18n="diag.p2_evidence"><code>fwmultik_dispatcher_vs_stats_enqueue_fail...</code> registra <strong>5,835,841,087 fallos F2P</strong> hacia espacio de usuario y <strong>43.7M fallos Inbound</strong>. Hay 123M paquetes no acelerados por <code>Inspect handler</code>.</span>
-                </div>
-                <div class="problem-card-confluence">
-                  <span style="color:var(--text-dim); font-weight:600;" data-i18n="diag.confluence_label">Confluencia Temporal:</span>
-                  <div class="confluence-chips-row">
-                    <span class="confluence-chip queue" data-i18n="diag.p2_chip1">🔴 F2P Drops: 5.83B</span>
-                    <span class="confluence-chip cpu" data-i18n="diag.p2_chip2">🔴 Worker Starvation</span>
-                    <span class="confluence-chip traffic" data-i18n="diag.p2_chip3">🔵 Slow Path Burst</span>
-                  </div>
-                </div>
-                <div class="problem-card-remediation">
-                  <strong data-i18n="diag.rootcause_label">Causa Raíz & Solución:</strong> <span data-i18n="diag.p2_remedy">Desborde en colas de despachador hacia userspace. Aumentar el tamaño del buffer y optimizar plantillas SecureXL.</span>
-                  <br>
-                  <code>fw ctl set int sim_dispatcher_queue_size 4096</code>
-                </div>
-              </div>
-
-              <!-- Problem 3: Connection Setup Spikes -->
-              <div class="problem-audit-card severity-crit">
-                <div class="problem-card-top">
-                  <div class="problem-card-title" data-i18n="diag.p3_title">Ráfagas Masivas de Nuevas Conexiones (Hasta 396k conns/s)</div>
-                  <span class="problem-card-badge crit" data-i18n="diag.badge_critical">Crítico</span>
-                </div>
-                <div class="problem-card-evidence">
-                  <strong data-i18n="diag.evidence_label">Evidencia en tablas:</strong> <span data-i18n="diag.p3_evidence">La tasa de establecimiento se dispara de ~10k a <strong>396,498 conns/s</strong> (aumento del 3,800%), coincidiendo con picos de conexiones en estado <code>tcp_handshake</code> y saturación de cores de firewall.</span>
-                </div>
-                <div class="problem-card-confluence">
-                  <span style="color:var(--text-dim); font-weight:600;" data-i18n="diag.confluence_label">Confluencia Temporal:</span>
-                  <div class="confluence-chips-row">
-                    <span class="confluence-chip conns" data-i18n="diag.p3_chip1">🟣 Conn Rate: 396k/s</span>
-                    <span class="confluence-chip cpu" data-i18n="diag.p3_chip2">🔴 Cores 1 & 3: 98%</span>
-                    <span class="confluence-chip drops" data-i18n="diag.p3_chip3">🟡 Rulebase Drops</span>
-                  </div>
-                </div>
-                <div class="problem-card-remediation">
-                  <strong data-i18n="diag.rootcause_label">Causa Raíz & Solución:</strong> <span data-i18n="diag.p3_remedy">Apertura masiva de sesiones por escaneos o ráfagas SYN. Activar Accelerated SYN Defender en SecureXL.</span>
-                  <br>
-                  <code>fw ctl set int sim_syn_defense 1</code>
-                </div>
-              </div>
-
-              <!-- Problem 4: Drops Rulebase & Anti-Spoofing -->
-              <div class="problem-audit-card severity-high">
-                <div class="problem-card-top">
-                  <div class="problem-card-title" data-i18n="diag.p4_title">Volumen Masivo de Descartes: 124.4M Rulebase y 21M Anti-Spoofing</div>
-                  <span class="problem-card-badge high" data-i18n="diag.badge_high">Alto</span>
-                </div>
-                <div class="problem-card-evidence">
-                  <strong data-i18n="diag.evidence_label">Evidencia en tablas:</strong> <span data-i18n="diag.p4_evidence">126.8M descartes totales. El 98.1% son por <code>Rulebase</code> y 21M por <code>Anti-Spoofing PPAK</code>. El <strong>13 de marzo a las 12:00 UTC</strong> se produjo un pico de <strong>535,248 drops/h</strong>.</span>
-                </div>
-                <div class="problem-card-confluence">
-                  <span style="color:var(--text-dim); font-weight:600;" data-i18n="diag.confluence_label">Confluencia Temporal:</span>
-                  <div class="confluence-chips-row">
-                    <span class="confluence-chip drops" data-i18n="diag.p4_chip1">🟠 Drops: 535k/h</span>
-                    <span class="confluence-chip traffic" data-i18n="diag.p4_chip2">🔵 Throughput: 506 Gbps</span>
-                    <span class="confluence-chip cpu" data-i18n="diag.p4_chip3">🔴 CPU Core 1: 94%</span>
-                  </div>
-                </div>
-                <div class="problem-card-remediation">
-                  <strong data-i18n="diag.rootcause_label">Causa Raíz & Solución:</strong> <span data-i18n="diag.p4_remedy">Habilitar Drop Templates para descartar en hardware/SND antes de cargar CoreXL. Auditar topología Anti-Spoofing.</span>
-                  <br>
-                  <code>fw accel drop_templates on</code>
-                </div>
-              </div>
-
-              <!-- Problem 5: 10G Link Wire-Rate Saturation -->
-              <div class="problem-audit-card severity-high">
-                <div class="problem-card-top">
-                  <div class="problem-card-title" data-i18n="diag.p5_title">Saturación Cercana a Tasa de Línea en Enlace 10G eth2-13 (9.14 Gbps)</div>
-                  <span class="problem-card-badge high" data-i18n="diag.badge_high">Alto</span>
-                </div>
-                <div class="problem-card-evidence">
-                  <strong data-i18n="diag.evidence_label">Evidencia en tablas:</strong> <span data-i18n="diag.p5_evidence">Interfaz física <code>eth2-13</code> alcanza un pico de <strong>9,138.76 Mbps (91.4% de un enlace 10G)</strong>. En agregación, <code>bond1</code> supera los <strong>9.39 Gbps</strong>, provocando riesgo inminente de micro-drops.</span>
-                </div>
-                <div class="problem-card-confluence">
-                  <span style="color:var(--text-dim); font-weight:600;" data-i18n="diag.confluence_label">Confluencia Temporal:</span>
-                  <div class="confluence-chips-row">
-                    <span class="confluence-chip traffic" data-i18n="diag.p5_chip1">🔵 Throughput: 9.14 Gbps</span>
-                    <span class="confluence-chip cpu" data-i18n="diag.p5_chip2">🔴 Buffer Queuing</span>
-                  </div>
-                </div>
-                <div class="problem-card-remediation">
-                  <strong data-i18n="diag.rootcause_label">Causa Raíz & Solución:</strong> <span data-i18n="diag.p5_remedy">Desbalanceo LACP. Cambiar algoritmo de hash del bond para repartir tráfico entre enlaces miembros.</span>
-                  <br>
-                  <code>set bonding group bond1 mode layer3+4</code>
-                </div>
-              </div>
-
-              <!-- Problem 6: Midnight Recurrent Degradation -->
-              <div class="problem-audit-card severity-med">
-                <div class="problem-card-top">
-                  <div class="problem-card-title" data-i18n="diag.p6_title">Patrón Cíclico a Medianoche (00:00 UTC - 83.3% de los Días)</div>
-                  <span class="problem-card-badge med" data-i18n="diag.badge_recurrent">Recurrente</span>
-                </div>
-                <div class="problem-card-evidence">
-                  <strong data-i18n="diag.evidence_label">Evidencia en tablas:</strong> <span data-i18n="diag.p6_evidence">En <strong>25 de los 30 días (83.3%)</strong> a las 00:00 UTC, Core 1 supera el 75% de CPU con ráfagas de <code>sqlite3</code>, <code>fwk0_TRACK_WRTR</code> y rotación de logs.</span>
-                </div>
-                <div class="problem-card-confluence">
-                  <span style="color:var(--text-dim); font-weight:600;" data-i18n="diag.confluence_label">Confluencia Temporal:</span>
-                  <div class="confluence-chips-row">
-                    <span class="confluence-chip recurrent" data-i18n="diag.p6_chip1">🟢 25/30 Días a las 00h</span>
-                    <span class="confluence-chip cpu" data-i18n="diag.p6_chip2">🔴 CPU Spike Core 1</span>
-                  </div>
-                </div>
-                <div class="problem-card-remediation">
-                  <strong data-i18n="diag.rootcause_label">Causa Raíz & Solución:</strong> <span data-i18n="diag.p6_remedy">Tareas programadas en crontab y rotación de logs colisionando a las 00:00. Escalonar cron jobs.</span>
-                  <br>
-                  <code>crontab -l</code> · <code>nice -n 15</code>
-                </div>
-              </div>
-
-              <!-- Problem 7: Business Hours Surge -->
-              <div class="problem-audit-card severity-med">
-                <div class="problem-card-top">
-                  <div class="problem-card-title" data-i18n="diag.p7_title">Patrón Laboral de Mediodía (11:00 - 13:00 UTC - 53% de los Días)</div>
-                  <span class="problem-card-badge med" data-i18n="diag.badge_recurrent">Recurrente</span>
-                </div>
-                <div class="problem-card-evidence">
-                  <strong data-i18n="diag.evidence_label">Evidencia en tablas:</strong> <span data-i18n="diag.p7_evidence">Entre semana de lunes a viernes, el 53% de los días presentan saturación coincidente de conexiones y CPU en esta franja. Fines de semana cae al 4.2%.</span>
-                </div>
-                <div class="problem-card-confluence">
-                  <span style="color:var(--text-dim); font-weight:600;" data-i18n="diag.confluence_label">Confluencia Temporal:</span>
-                  <div class="confluence-chips-row">
-                    <span class="confluence-chip recurrent" data-i18n="diag.p7_chip1">🟢 L-V 11h - 13h</span>
-                    <span class="confluence-chip conns" data-i18n="diag.p7_chip2">🟣 Pico Usuarios</span>
-                  </div>
-                </div>
-                <div class="problem-card-remediation">
-                  <strong data-i18n="diag.rootcause_label">Causa Raíz & Solución:</strong> <span data-i18n="diag.p7_remedy">Pico horario laboral de tráfico corporativo. Optimizar inspección SSL para tráfico no crítico.</span>
-                  <br>
-                  <code>fw ctl multik stat</code>
-                </div>
-              </div>
-
-              <!-- Problem 8: Flofiler Inefficient Acceleration -->
-              <div class="problem-audit-card severity-high">
-                <div class="problem-card-top">
-                  <div class="problem-card-title" data-i18n="diag.p8_title">Ineficiencia en Aceleración: 223M Paquetes F2F y 51.5% CPU en Chain Modules</div>
-                  <span class="problem-card-badge high" data-i18n="diag.badge_high">Alto</span>
-                </div>
-                <div class="problem-card-evidence">
-                  <strong data-i18n="diag.evidence_label">Evidencia en tablas:</strong> <span data-i18n="diag.p8_evidence">Flofiler revela que el <strong>51.51% de ciclos de CPU</strong> se disipan en <code>Chain modules</code> y 13.0% en <code>Inbound F2F</code>. SecureXL desvía <strong>123.1M paquetes por Inspect handler</strong> y 99.8M por protocolo IP no acelerado. Tráfico de inspección dominado por DNS (UDP:53 con 21.3%) y SMB (TCP:445 con 12.6%).</span>
-                </div>
-                <div class="problem-card-confluence">
-                  <span style="color:var(--text-dim); font-weight:600;" data-i18n="diag.confluence_label">Confluencia Temporal:</span>
-                  <div class="confluence-chips-row">
-                    <span class="confluence-chip cpu" data-i18n="diag.p8_chip1">🔴 Chain Modules: 51.5%</span>
-                    <span class="confluence-chip traffic" data-i18n="diag.p8_chip2">🔵 DNS / SMB L7</span>
-                    <span class="confluence-chip queue" data-i18n="diag.p8_chip3">🟡 F2F Slow Path</span>
-                  </div>
-                </div>
-                <div class="problem-card-remediation">
-                  <strong data-i18n="diag.rootcause_label">Causa Raíz & Solución:</strong> <span data-i18n="diag.p8_remedy">Paquetes procesados en camino lento (PPAK bypass) por inspecciones de capa 7 complejas. Optimizar SecureXL Drop Templates y plantillas de aceleración.</span>
-                  <br>
-                  <code>fwaccel stat</code> · <code>fw ctl conns</code>
-                </div>
-              </div>
-
             </div>
           </div>
         </div>
@@ -764,10 +615,20 @@
           <div class="card-header">
             <div>
               <h3 class="card-header-title" data-i18n="diag.chart_title"><span>📈</span> Correlación Temporal Multivariable de Indicadores (30 Días)</h3>
-              <p class="card-header-subtitle" data-i18n="diag.chart_subtitle">Superposición simultánea de CPU Core 1, Throughput, Tasa de Conexiones y Drops. Permite identificar confluencias críticas en la línea temporal.</p>
+              <p class="card-header-subtitle" id="diag-chart-subtitle" data-i18n="diag.chart_subtitle">Superposición simultánea de CPU Pico (CoreXL Worker), Throughput, Tasa de Conexiones y Drops. Permite identificar confluencias críticas en la línea temporal.</p>
             </div>
             <div class="card-actions" style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
-              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="font-size:11.5px; color:var(--text-muted);">Core:</span>
+                  <select id="diag-core-select" class="select-input" style="padding:4px 8px; font-size:11.5px;">
+                    <option value="peak">🔥 Core Pico Dinámico</option>
+                  </select>
+                </div>
+                <div class="filter-btn-group" id="diag-cpu-metric-toggle">
+                  <button class="filter-btn active" id="btn-diag-metric-max" data-metric="max" title="Mostrar utilización pico (máxima)">Picos</button>
+                  <button class="filter-btn" id="btn-diag-metric-avg" data-metric="avg" title="Mostrar utilización promedio horaria">Media</button>
+                </div>
                 <button class="filter-btn active" id="btn-diag-range-all" data-range="all" data-i18n="diag.range_all">Todo el Mes (30D)</button>
                 <button class="filter-btn" id="btn-diag-range-14d" data-range="14" data-i18n="diag.range_14d">14 Días</button>
                 <button class="filter-btn" id="btn-diag-range-7d" data-range="7" data-i18n="diag.range_7d">7 Días</button>
@@ -792,7 +653,7 @@
           <div class="card-header">
             <div>
               <h3 class="card-header-title" data-i18n="diag.heatmap_title"><span>🗓️</span> Mapa de Calor de Recurrencia: Franjas Críticas por Hora y Día</h3>
-              <p class="card-header-subtitle" data-i18n="diag.heatmap_subtitle">Distribución temporal de horas con alta carga (Core 1 ≥ 75%). Revela de forma instantánea el patrón diario a medianoche y el ciclo laboral.</p>
+              <p class="card-header-subtitle" id="diag-heatmap-subtitle" data-i18n="diag.heatmap_subtitle">Distribución temporal de horas con alta carga en CoreXL (≥ 75%). Revela de forma instantánea el patrón diario a medianoche y el ciclo laboral.</p>
             </div>
           </div>
           <div style="padding: 20px 24px;">
@@ -895,7 +756,7 @@
                   <span data-i18n="diag.pb_step1_title">Activar CoreXL Dynamic Dispatcher</span>
                 </div>
                 <p style="font-size:calc(12px * var(--font-scale,1)); color:var(--text-muted); line-height:1.4;" data-i18n="diag.pb_step1_desc">
-                  Elimina el cuello de botella en Core 1 redistribuyendo los flujos de tráfico pesados dinámicamente entre todos los workers disponibles.
+                  Elimina el cuello de botella en los workers de CoreXL redistribuyendo los flujos de tráfico pesados dinámicamente entre todos los núcleos disponibles.
                 </p>
                 <div class="playbook-cmd">
                   <span class="playbook-cmd-text">fw ctl multik dynamic_disp on</span>
@@ -1141,24 +1002,24 @@
               <span class="kpi-title" data-i18n="system.kpi_cores">Cores Asignados</span>
               <div class="kpi-icon">⚙️</div>
             </div>
-            <div class="kpi-value">4 Cores</div>
-            <div class="kpi-subtext" data-i18n="system.kpi_cores_sub">2 CoreXL FW Workers + 2 SND Cores</div>
+            <div class="kpi-value" id="kpi-system-cores-count">32 Cores</div>
+            <div class="kpi-subtext" id="kpi-system-cores-breakdown">16 CoreXL FW Workers + 16 SND Cores</div>
           </div>
           <div class="kpi-card emerald">
             <div class="kpi-header">
               <span class="kpi-title" data-i18n="system.kpi_ram">Memoria RAM Total</span>
               <div class="kpi-icon">🧠</div>
             </div>
-            <div class="kpi-value">15.37 GB</div>
-            <div class="kpi-subtext"><span data-i18n="system.kpi_ram_sub">Uso medio:</span> <strong id="mem-avg-pct">33.1%</strong> (~5.08 GB)</div>
+            <div class="kpi-value" id="kpi-system-ram-val">15.37 GB</div>
+            <div class="kpi-subtext"><span data-i18n="system.kpi_ram_sub">Uso medio:</span> <strong id="mem-avg-pct">33.1%</strong></div>
           </div>
           <div class="kpi-card purple">
             <div class="kpi-header">
               <span class="kpi-title" data-i18n="system.kpi_os">Versión Gaia SO</span>
               <div class="kpi-icon">🐧</div>
             </div>
-            <div class="kpi-value" style="font-size: 20px;">Gaia 64Bit R81.10</div>
-            <div class="kpi-subtext" data-i18n="system.kpi_os_sub">Jumbo Hotfix Main Take 28</div>
+            <div class="kpi-value" id="kpi-system-os-val" style="font-size: 20px;">Gaia 64Bit R81.20</div>
+            <div class="kpi-subtext" id="kpi-system-os-sub">Jumbo Hotfix Main Take 997000043</div>
           </div>
           <div class="kpi-card blue">
             <div class="kpi-header">
@@ -1209,9 +1070,21 @@
               <div class="card-header">
                 <div>
                   <h3 class="card-header-title" data-i18n="system.chart_timeline_title"><span>📊</span> Utilización Individual por Core en el Tiempo</h3>
-                  <p class="card-header-subtitle" data-i18n="system.chart_timeline_subtitle">Comparativa de carga entre Cores SND (0, 2) y CoreXL Workers (1, 3)</p>
+                  <p class="card-header-subtitle" data-i18n="system.chart_timeline_subtitle">Comparativa temporal de utilización de CPU en los principales Cores SND y Workers de CoreXL</p>
                 </div>
                 <div class="chart-controls" data-chart="chart-cpu-cores-timeline">
+                  <div style="display:flex; align-items:center; gap:6px; margin-right:8px;">
+                    <span style="font-size:11.5px; color:var(--text-muted);">Cores:</span>
+                    <select id="system-core-select" class="select-input" style="padding:4px 8px; font-size:11.5px;">
+                      <option value="top6">⭐ Top 6 Cores más Activos</option>
+                      <option value="all">🌐 Todos los Cores</option>
+                      <option value="peak">🔥 Core Máximo Dinámico</option>
+                    </select>
+                  </div>
+                  <div class="filter-btn-group" id="cpu-timeline-metric-toggle" style="margin-right: 6px;">
+                    <button class="filter-btn active" id="btn-cpu-metric-max" data-metric="max" title="Mostrar picos máximos por hora" data-i18n="system.btn_metric_max">Picos</button>
+                    <button class="filter-btn" id="btn-cpu-metric-avg" data-metric="avg" title="Mostrar utilización promedio horaria" data-i18n="system.btn_metric_avg">Media</button>
+                  </div>
                   <div class="filter-btn-group chart-type-group">
                     <button class="filter-btn active" data-type="line" data-i18n="chartgen.type_line">📈 Línea</button>
                     <button class="filter-btn" data-type="bar" data-i18n="chartgen.type_bar">📊 Barras</button>
@@ -1300,6 +1173,39 @@
           <div class="card-body">
             <div class="chart-container">
               <canvas id="chart-top-interfaces"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Interfaces Timeline Chart (Throughput por tiempo) -->
+        <div class="card-panel" style="margin-bottom: 24px;">
+          <div class="card-header">
+            <div>
+              <h3 class="card-header-title"><span>📶</span> Throughput de las Interfaces por Tiempo</h3>
+              <p class="card-header-subtitle">Evolución temporal del throughput (Mbps) por interfaz a lo largo de las franjas horarias</p>
+            </div>
+            <div class="card-actions" style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+              <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="font-size:11.5px; color:var(--text-muted); font-weight:600;">Interfaces:</span>
+                  <select id="if-timeline-select" class="select-input" style="padding:4px 8px; font-size:11.5px;">
+                    <option value="top5" selected>⭐ Top 5 Interfaces</option>
+                    <option value="top10">⭐ Top 10 Interfaces</option>
+                    <option value="all">🌐 Todas las Interfaces</option>
+                  </select>
+                </div>
+                <div class="filter-btn-group" id="if-timeline-metric-toggle">
+                  <button class="filter-btn active" id="btn-if-metric-total" data-metric="total" title="Tráfico Total (Rx + Tx)">Total</button>
+                  <button class="filter-btn" id="btn-if-metric-rx" data-metric="rx" title="Solo Tráfico Inbound (Rx)">Rx</button>
+                  <button class="filter-btn" id="btn-if-metric-tx" data-metric="tx" title="Solo Tráfico Outbound (Tx)">Tx</button>
+                </div>
+              </div>
+              <div class="chart-controls" data-chart="chart-interfaces-timeline"></div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="chart-container" style="height: 340px;">
+              <canvas id="chart-interfaces-timeline"></canvas>
             </div>
           </div>
         </div>
@@ -1568,13 +1474,13 @@
           </div>
           <div class="kpi-card rose">
             <div class="kpi-header"><span class="kpi-title" data-i18n="spikes.kpi_top_consumer">Consumidor Principal</span><div class="kpi-icon">🔥</div></div>
-            <div class="kpi-value" style="font-size:22px;">fwk0_1 (898 picos)</div>
-            <div class="kpi-subtext" data-i18n="spikes.kpi_top_consumer_sub">Firewall Kernel Worker Core 1</div>
+            <div class="kpi-value" id="kpi-top-consumer-val" style="font-size:20px;">fwk0_1 (898 picos)</div>
+            <div class="kpi-subtext" id="kpi-top-consumer-sub" data-i18n="spikes.kpi_top_consumer_sub">Firewall Kernel Worker</div>
           </div>
           <div class="kpi-card cyan">
             <div class="kpi-header"><span class="kpi-title" data-i18n="spikes.kpi_max_dur">Duración Máxima</span><div class="kpi-icon">⏱️</div></div>
-            <div class="kpi-value">3.53 h</div>
-            <div class="kpi-subtext" data-i18n="spikes.kpi_max_dur_sub">12,717 seg continuos en fwk0_0</div>
+            <div class="kpi-value" id="kpi-max-dur-val">3.53 h</div>
+            <div class="kpi-subtext" id="kpi-max-dur-sub" data-i18n="spikes.kpi_max_dur_sub">12,717 seg continuos</div>
           </div>
         </div>
 
