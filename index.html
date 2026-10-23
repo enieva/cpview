@@ -1073,14 +1073,6 @@
                   <p class="card-header-subtitle" data-i18n="system.chart_timeline_subtitle">Comparativa temporal de utilización de CPU en los principales Cores SND y Workers de CoreXL</p>
                 </div>
                 <div class="chart-controls" data-chart="chart-cpu-cores-timeline">
-                  <div style="display:flex; align-items:center; gap:6px; margin-right:8px;">
-                    <span style="font-size:11.5px; color:var(--text-muted);">Cores:</span>
-                    <select id="system-core-select" class="select-input" style="padding:4px 8px; font-size:11.5px;">
-                      <option value="top6">⭐ Top 6 Cores más Activos</option>
-                      <option value="all">🌐 Todos los Cores</option>
-                      <option value="peak">🔥 Core Máximo Dinámico</option>
-                    </select>
-                  </div>
                   <div class="filter-btn-group" id="cpu-timeline-metric-toggle" style="margin-right: 6px;">
                     <button class="filter-btn active" id="btn-cpu-metric-max" data-metric="max" title="Mostrar picos máximos por hora" data-i18n="system.btn_metric_max">Picos</button>
                     <button class="filter-btn" id="btn-cpu-metric-avg" data-metric="avg" title="Mostrar utilización promedio horaria" data-i18n="system.btn_metric_avg">Media</button>
@@ -1097,6 +1089,47 @@
                     <span class="color-dot" data-color="#8b5cf6" style="background:#8b5cf6;" title="Púrpura"></span>
                     <span class="color-dot" data-color="#10b981" style="background:#10b981;" title="Esmeralda"></span>
                   </div>
+                </div>
+              </div>
+
+              <!-- Dedicated Core Selection Toolbar: Por Tipo (SND/Worker) y Rangos de 5 en 5 -->
+              <div class="cpu-timeline-core-bar" id="cpu-timeline-core-bar">
+                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+                  <!-- Selección por Tipo -->
+                  <span style="font-size:12px; font-weight:600; color:var(--text-secondary); display:flex; align-items:center; gap:4px;">
+                    <span>🛡️</span> <span data-i18n="system.label_core_type">Por Tipo:</span>
+                  </span>
+                  <div class="filter-btn-group" id="cpu-core-type-buttons">
+                    <button class="filter-btn active" data-choice="top5" title="Top 5 cores con más carga" data-i18n="system.btn_type_top5">⭐ Top 5</button>
+                    <button class="filter-btn" data-choice="top10" title="Top 10 cores con más carga" data-i18n="system.btn_type_top10">⭐ Top 10</button>
+                    <button class="filter-btn" data-choice="snds" title="Graficar únicamente Cores SND (SecureXL Dispatchers)" data-i18n="system.btn_type_snd">🛡️ SNDs</button>
+                    <button class="filter-btn" data-choice="workers" title="Graficar únicamente Cores Firewall Workers" data-i18n="system.btn_type_worker">⚙️ Workers</button>
+                    <button class="filter-btn" data-choice="all" title="Graficar todos los cores de la plataforma" data-i18n="system.btn_type_all">🌐 Todos</button>
+                    <button class="filter-btn" data-choice="peak" title="Core máximo dinámico en cada instante" data-i18n="system.btn_type_peak">🔥 Core Pico</button>
+                  </div>
+
+                  <!-- Separador vertical -->
+                  <div style="width:1px; height:20px; background:var(--border-subtle); margin:0 4px;"></div>
+
+                  <!-- Selección por Rangos de 5 en 5 -->
+                  <span style="font-size:12px; font-weight:600; color:var(--text-secondary); display:flex; align-items:center; gap:4px;">
+                    <span>🔢</span> <span data-i18n="system.label_core_ranges">Rangos (5 en 5):</span>
+                  </span>
+                  <div class="filter-btn-group" id="cpu-core-range-buttons" style="display:flex; align-items:center; flex-wrap:wrap; gap:2px;">
+                    <!-- Botones 0-4, 5-9, 10-14... generados dinámicamente -->
+                  </div>
+                </div>
+
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="font-size:11.5px; color:var(--text-muted);" data-i18n="system.label_core_select">Core / Modo:</span>
+                  <select id="system-core-select" class="select-input" style="padding:4px 8px; font-size:11.5px; min-width:180px;">
+                    <option value="top5">⭐ Top 5 Cores más Activos</option>
+                    <option value="top10">⭐ Top 10 Cores más Activos</option>
+                    <option value="snds">🛡️ Solo SNDs</option>
+                    <option value="workers">⚙️ Solo Workers</option>
+                    <option value="all">🌐 Todos los Cores</option>
+                    <option value="peak">🔥 Core Máximo Dinámico</option>
+                  </select>
                 </div>
               </div>
               <div class="card-body">
@@ -2528,6 +2561,9 @@
           </div>
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
+          <button class="btn btn-sm btn-outline" id="btn-chartgen-view-fields" title="Ver campos y esquema de la tabla">
+            <span id="icon-view-fields">📋</span> <span data-i18n="chartgen.btn_view_fields">Ver Campos</span>
+          </button>
           <button class="btn btn-sm btn-outline" id="btn-chartgen-toggle-controls" title="Ocultar o mostrar controles de selección para más espacio de gráfico">
             <span id="icon-toggle-controls">👁️</span> <span id="lbl-toggle-controls" data-i18n="chartgen.lbl_toggle_controls">Ocultar Controles</span>
           </button>
@@ -2549,6 +2585,23 @@
       <div class="modal-body chart-gen-modal-body">
         <!-- Configuration Controls Wrapper (Hideable) -->
         <div class="chartgen-controls-wrapper" id="chartgen-controls-wrapper">
+          <!-- SQL Filter Bar on Table -->
+          <div class="chartgen-sql-filter-bar">
+            <div class="chartgen-sql-label">
+              <span>⚡</span> <span data-i18n="chartgen.sql_filter_label">Filtro / Consulta SQL:</span>
+            </div>
+            <div class="chartgen-sql-input-wrap">
+              <input type="text" id="chartgen-sql-filter-input" class="chartgen-sql-input" 
+                placeholder="Filtro o consulta SQL sobre la tabla (ej. WHERE avg_usage > 50  ó  core IN (0,1)  ó  SELECT * FROM ... WHERE ...)" 
+                data-i18n-placeholder="chartgen.sql_filter_placeholder">
+              <button class="btn-sql-clear" id="btn-chartgen-sql-clear" title="Limpiar filtro SQL">✕</button>
+            </div>
+            <button class="btn btn-sm btn-primary" id="btn-chartgen-sql-exec" title="Ejecutar consulta/filtro SQL para cambiar los datos graficados">
+              <span>▶</span> <span data-i18n="chartgen.btn_sql_exec">Ejecutar</span>
+            </button>
+            <span class="chartgen-sql-status" id="chartgen-sql-status"></span>
+          </div>
+
           <!-- Configuration Controls Grid -->
           <div class="chartgen-controls-grid">
             <!-- Col 1: X Axis -->
@@ -2598,6 +2651,16 @@
                 <option value="MAX">Pico Máximo (MAX)</option>
                 <option value="MIN">Valor Mínimo (MIN)</option>
                 <option value="RAW">Valores Directos (Sin agrupar)</option>
+              </select>
+            </div>
+
+            <!-- Col 5: Differentiator Field (Multi-Chart Split) -->
+            <div class="chartgen-control-group">
+              <label class="chartgen-label" for="chartgen-diff-col">
+                <span>🏷️</span> <span data-i18n="chartgen.label_diff">Campo Diferenciador (1 Gráfico por Valor)</span>
+              </label>
+              <select id="chartgen-diff-col" class="chartgen-select">
+                <option value="" data-i18n="chartgen.opt_diff_none">(Ninguno - Gráfico único)</option>
               </select>
             </div>
           </div>
@@ -2711,36 +2774,49 @@
             </button>
           </div>
 
-          <!-- Chart Stage Canvas -->
-          <div class="chartgen-canvas-container">
-            <canvas id="canvas-custom-chart"></canvas>
-            <div id="chartgen-no-data" style="display:none;" class="chartgen-empty-state" data-i18n="chartgen.no_data">
-              <span>ℹ️</span> No hay datos para graficar con la configuración actual.
+          <!-- Single Chart Stage Canvas & Stats Wrap -->
+          <div id="chartgen-single-chart-wrap">
+            <div class="chartgen-canvas-container">
+              <canvas id="canvas-custom-chart"></canvas>
+              <div id="chartgen-no-data" style="display:none;" class="chartgen-empty-state" data-i18n="chartgen.no_data">
+                <span>ℹ️</span> No hay datos para graficar con la configuración actual.
+              </div>
+            </div>
+
+            <!-- Quick KPI Stats Bar -->
+            <div class="chartgen-stats-bar" id="chartgen-single-stats-bar">
+              <div class="chartgen-stat-card">
+                <span class="stat-label" data-i18n="chartgen.stat_categories">Categorías / Puntos</span>
+                <strong class="stat-val" id="chartgen-stat-count">0</strong>
+              </div>
+              <div class="chartgen-stat-card">
+                <span class="stat-label" data-i18n="chartgen.stat_sum">Suma Total</span>
+                <strong class="stat-val" id="chartgen-stat-sum">0</strong>
+              </div>
+              <div class="chartgen-stat-card">
+                <span class="stat-label" data-i18n="chartgen.stat_avg">Media / Promedio</span>
+                <strong class="stat-val" id="chartgen-stat-avg">0</strong>
+              </div>
+              <div class="chartgen-stat-card">
+                <span class="stat-label" data-i18n="chartgen.stat_max">Pico Máximo</span>
+                <strong class="stat-val" id="chartgen-stat-max">0</strong>
+              </div>
+              <div class="chartgen-stat-card">
+                <span class="stat-label" data-i18n="chartgen.stat_min">Mínimo</span>
+                <strong class="stat-val" id="chartgen-stat-min">0</strong>
+              </div>
             </div>
           </div>
 
-          <!-- Quick KPI Stats Bar -->
-          <div class="chartgen-stats-bar">
-            <div class="chartgen-stat-card">
-              <span class="stat-label" data-i18n="chartgen.stat_categories">Categorías / Puntos</span>
-              <strong class="stat-val" id="chartgen-stat-count">0</strong>
+          <!-- Differentiator Multi-Chart Split Container -->
+          <div id="chartgen-diff-charts-container" style="display:none;">
+            <div class="chartgen-diff-header-bar">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span class="diff-badge" id="chartgen-diff-summary-badge">Desglose por Campo: -</span>
+                <span style="font-size:12px; color:var(--text-muted);" id="chartgen-diff-count-badge">0 gráficos generados</span>
+              </div>
             </div>
-            <div class="chartgen-stat-card">
-              <span class="stat-label" data-i18n="chartgen.stat_sum">Suma Total</span>
-              <strong class="stat-val" id="chartgen-stat-sum">0</strong>
-            </div>
-            <div class="chartgen-stat-card">
-              <span class="stat-label" data-i18n="chartgen.stat_avg">Media / Promedio</span>
-              <strong class="stat-val" id="chartgen-stat-avg">0</strong>
-            </div>
-            <div class="chartgen-stat-card">
-              <span class="stat-label" data-i18n="chartgen.stat_max">Pico Máximo</span>
-              <strong class="stat-val" id="chartgen-stat-max">0</strong>
-            </div>
-            <div class="chartgen-stat-card">
-              <span class="stat-label" data-i18n="chartgen.stat_min">Mínimo</span>
-              <strong class="stat-val" id="chartgen-stat-min">0</strong>
-            </div>
+            <div class="chartgen-diff-grid" id="chartgen-diff-grid"></div>
           </div>
         </div>
       </div>
@@ -2763,12 +2839,55 @@
     </div>
   </div>
 
+  <!-- ======================================================================
+       Modal: Table Fields / Columns Viewer
+       ====================================================================== -->
+  <div class="modal-overlay" id="modal-table-fields" style="z-index: 1050;">
+    <div class="modal-card" style="max-width: 720px; max-height: 85vh;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:22px;">📋</span>
+          <div>
+            <h3 class="modal-title" id="table-fields-title" data-i18n="chartgen.fields_title">Campos de la Tabla</h3>
+            <span style="font-size:12px; color:var(--text-muted);" id="table-fields-sub" data-i18n="chartgen.fields_subtitle">Esquema de columnas y tipos detectados</span>
+          </div>
+        </div>
+        <button class="modal-close" id="btn-close-table-fields">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:16px 20px; overflow-y:auto; max-height:calc(85vh - 130px);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:10px;">
+          <div class="search-input-wrapper" style="flex:1; max-width:320px;">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="filter-table-fields-search" class="search-input" placeholder="Buscar campo o columna...">
+          </div>
+          <span id="table-fields-count-badge" style="font-size:12px; color:var(--text-muted);">0 campos</span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" id="table-fields-catalog">
+            <thead>
+              <tr>
+                <th>Campo / Columna</th>
+                <th>Tipo Detectado</th>
+                <th>Valor de Muestra</th>
+                <th style="text-align:right;">Asignar Rápido</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-table-fields"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer" style="padding:10px 20px; display:flex; justify-content:flex-end;">
+        <button class="btn" id="btn-close-table-fields-footer" data-i18n="chartgen.btn_close">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Floating Toast Notification for Scale / Font Changes -->
   <div id="scale-toast" class="scale-toast" aria-live="polite">
     <span id="scale-toast-icon">🔍</span>
     <span id="scale-toast-text">Zoom: 100%</span>
   </div>
 
-  <script src="app.js?v=18"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>

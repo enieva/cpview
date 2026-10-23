@@ -64,9 +64,13 @@ function filterTimeSeries(arr, tsProp = 'ts') {
 let chartGenState = {
   sourceId: 'cpu-cores',
   allRows: [],
+  rawRows: [],
   rows: [],
   columns: [],
   title: '',
+  sqlFilter: '',
+  diffCol: '',
+  diffChartInstances: [],
   xCol: '',
   timeFormat: 'none',
   yCol: '*',
@@ -4927,7 +4931,66 @@ function renderSystemPage() {
     kpiRamVal.textContent = `${memTotalGb} GB`;
   }
 
-  // Populate system-core-select with Top-5, Top-10, Solo SNDs, Solo Workers, Todas las CPUs, Core Máximo, and individual cores
+  // Ranges generation in blocks of 5 cores
+  const ranges = [];
+  for (let start = 0; start < totalCores; start += 5) {
+    const end = Math.min(start + 4, totalCores - 1);
+    ranges.push({
+      id: `range_${start}_${end}`,
+      start,
+      end,
+      label: `${start}-${end}`,
+      fullLabel: `Cores ${start} - ${end} (${end - start + 1} cores)`
+    });
+  }
+
+  // Populate Range Buttons (5 en 5)
+  const rangeButtonsContainer = document.getElementById('cpu-core-range-buttons');
+  if (rangeButtonsContainer && rangeButtonsContainer.getAttribute('data-loaded-for') !== String(totalCores)) {
+    rangeButtonsContainer.setAttribute('data-loaded-for', String(totalCores));
+    rangeButtonsContainer.innerHTML = ranges.map(r => `
+      <button class="filter-btn range-btn" data-choice="${r.id}" title="${r.fullLabel}">${r.label}</button>
+    `).join('');
+
+    rangeButtonsContainer.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const choice = btn.getAttribute('data-choice');
+        systemCpuState.coreSelection = choice;
+        renderSystemPage();
+      });
+    });
+  }
+
+  // Wire Core Type Buttons (Top 5, Top 10, SNDs, Workers, Todos, Pico)
+  const typeButtonsContainer = document.getElementById('cpu-core-type-buttons');
+  if (typeButtonsContainer && !typeButtonsContainer._bound) {
+    typeButtonsContainer._bound = true;
+    typeButtonsContainer.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const choice = btn.getAttribute('data-choice');
+        systemCpuState.coreSelection = choice;
+        renderSystemPage();
+      });
+    });
+  }
+
+  const selChoice = systemCpuState.coreSelection || 'top5';
+
+  // Synchronize Active states on Type buttons
+  if (typeButtonsContainer) {
+    typeButtonsContainer.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-choice') === selChoice);
+    });
+  }
+
+  // Synchronize Active states on Range buttons
+  if (rangeButtonsContainer) {
+    rangeButtonsContainer.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-choice') === selChoice);
+    });
+  }
+
+  // Populate system-core-select with Optgroups: Predefinidas, Tipo SND/Worker, Rangos 5 en 5, Cores individuales
   const sysCoreSelect = document.getElementById('system-core-select');
   if (sysCoreSelect && (sysCoreSelect.options.length <= 4 || sysCoreSelect.getAttribute('data-loaded-for') !== String(totalCores))) {
     sysCoreSelect.setAttribute('data-loaded-for', String(totalCores));
@@ -4935,19 +4998,35 @@ function renderSystemPage() {
     const workerCores = coresList.filter(c => !(c.role && (c.role.includes('SND') || c.role.includes('Dispatcher'))));
 
     let opts = `
-      <option value="top5">⭐ Top 5 Cores más Activos</option>
-      <option value="top10">⭐ Top 10 Cores más Activos</option>
-      <option value="snds">🛡️ Solo SNDs (${sndCores.length})</option>
-      <option value="workers">⚙️ Solo Workers (${workerCores.length})</option>
-      <option value="all">🌐 Todas las CPUs (${totalCores})</option>
-      <option value="peak">🔥 Core Máximo Dinámico</option>
+      <optgroup label="Vistas Predefinidas">
+        <option value="top5">⭐ Top 5 Cores más Activos</option>
+        <option value="top10">⭐ Top 10 Cores más Activos</option>
+        <option value="all">🌐 Todos los Cores (${totalCores})</option>
+        <option value="peak">🔥 Core Máximo Dinámico</option>
+      </optgroup>
+      <optgroup label="Por Tipo de Core (SND / Worker)">
+        <option value="snds">🛡️ Solo SNDs (${sndCores.length} cores)</option>
+        <option value="workers">⚙️ Solo Workers (${workerCores.length} cores)</option>
+      </optgroup>
+      <optgroup label="Por Rangos (de 5 en 5)">
+    `;
+    ranges.forEach(r => {
+      opts += `<option value="${r.id}">🔢 ${r.fullLabel}</option>`;
+    });
+    opts += `
+      </optgroup>
+      <optgroup label="Cores Individuales">
     `;
     coresList.forEach(c => {
       const cLabel = getConciseCoreName(c.core, c.role);
       opts += `<option value="${c.core}">${cLabel} (Max ${c.max_usage}%)</option>`;
     });
+    opts += `</optgroup>`;
+
     sysCoreSelect.innerHTML = opts;
-    sysCoreSelect.value = systemCpuState.coreSelection || 'top5';
+  }
+  if (sysCoreSelect) {
+    sysCoreSelect.value = selChoice;
     sysCoreSelect.onchange = (e) => {
       systemCpuState.coreSelection = e.target.value;
       renderSystemPage();
@@ -4955,7 +5034,6 @@ function renderSystemPage() {
   }
 
   // Determine which cores to plot based on user selection
-  const selChoice = systemCpuState.coreSelection || 'top5';
   let coresToPlot = [];
   if (selChoice === 'top5') {
     const sorted = coresList.slice().sort((a, b) => (b.max_usage * 2 + b.avg_usage) - (a.max_usage * 2 + a.avg_usage));
@@ -4971,20 +5049,34 @@ function renderSystemPage() {
     coresToPlot = coresList.map(c => c.core);
   } else if (selChoice === 'peak') {
     coresToPlot = ['peak'];
+  } else if (String(selChoice).startsWith('range_')) {
+    const match = String(selChoice).match(/^range_(\d+)_(\d+)$/);
+    if (match) {
+      const rStart = parseInt(match[1], 10);
+      const rEnd = parseInt(match[2], 10);
+      coresToPlot = [];
+      for (let ci = rStart; ci <= rEnd && ci < totalCores; ci++) {
+        coresToPlot.push(ci);
+      }
+    } else {
+      coresToPlot = [0, 1, 2, 3, 4];
+    }
   } else {
-    coresToPlot = [parseInt(selChoice)];
+    coresToPlot = [parseInt(selChoice, 10)];
   }
 
   // Populate Cores Table with interactive click-to-filter
   const tbody = document.querySelector('#table-cpu-cores tbody');
   if (tbody) {
-    const activeSelectedCore = (!isNaN(parseInt(selChoice))) ? parseInt(selChoice) : null;
+    const activeSelectedCore = (!isNaN(parseInt(selChoice, 10)) && !String(selChoice).startsWith('range_')) ? parseInt(selChoice, 10) : null;
     tbody.innerHTML = coresList.map(c => {
-      const isRowSelected = (activeSelectedCore === c.core);
+      const isDirectlySelected = (activeSelectedCore === c.core);
+      const isInPlottedGroup = coresToPlot.includes(c.core) && coresToPlot.length <= 10;
+      const isRowHighlighted = isDirectlySelected || isInPlottedGroup;
       const cLabel = getConciseCoreName(c.core, c.role);
       return `
-        <tr data-core-id="${c.core}" class="${isRowSelected ? 'selected-row' : ''}" style="cursor:pointer; ${isRowSelected ? 'background:rgba(6,182,212,0.12);' : ''}" title="Haz clic para ver la curva de este Core en el gráfico">
-          <td class="cell-mono"><strong>${cLabel}</strong> ${isRowSelected ? '🎯' : ''}</td>
+        <tr data-core-id="${c.core}" class="${isRowHighlighted ? 'selected-row' : ''}" style="cursor:pointer; ${isDirectlySelected ? 'background:rgba(6,182,212,0.18);' : (isInPlottedGroup ? 'background:rgba(6,182,212,0.06);' : '')}" title="Haz clic para aislar la curva de este Core en el gráfico">
+          <td class="cell-mono"><strong>${cLabel}</strong> ${isDirectlySelected ? '🎯' : (isInPlottedGroup ? '📈' : '')}</td>
           <td><span class="pill-badge ${c.role && c.role.includes('SND') ? 'eth' : 'vlan'}">${c.role}</span></td>
           <td class="cell-mono"><strong>${c.avg_usage}%</strong></td>
           <td class="cell-mono"><strong style="color:${c.max_usage >= 90 ? 'var(--accent-rose)' : (c.max_usage >= 75 ? 'var(--accent-amber)' : 'inherit')};">${c.max_usage}%</strong></td>
@@ -5003,13 +5095,12 @@ function renderSystemPage() {
 
     tbody.querySelectorAll('tr').forEach(tr => {
       tr.addEventListener('click', () => {
-        const cId = parseInt(tr.getAttribute('data-core-id'));
+        const cId = parseInt(tr.getAttribute('data-core-id'), 10);
         if (systemCpuState.coreSelection === String(cId) || systemCpuState.coreSelection === cId) {
           systemCpuState.coreSelection = 'top5';
         } else {
           systemCpuState.coreSelection = String(cId);
         }
-        if (sysCoreSelect) sysCoreSelect.value = systemCpuState.coreSelection;
         renderSystemPage();
         const chartEl = document.getElementById('chart-cpu-cores-timeline');
         if (chartEl) chartEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -6401,29 +6492,65 @@ function renderBladesPage() {
 // =============================================================================
 // PAGE 10: DATABASE EXPLORER
 // =============================================================================
+let selectedCatalogTable = null;
+
+function selectCatalogTable(tableName) {
+  selectedCatalogTable = tableName;
+  modalState.tableName = tableName;
+
+  // Highlight selected row in table-catalog
+  const tbody = document.getElementById('tbody-catalog');
+  if (tbody) {
+    tbody.querySelectorAll('tr').forEach(tr => {
+      if (tr.getAttribute('data-table-name') === tableName) {
+        tr.classList.add('selected-row');
+      } else {
+        tr.classList.remove('selected-row');
+      }
+    });
+  }
+
+  // Update table viewer chart button data-source and handler
+  const chartBtn = document.getElementById('btn-chart-modal-table');
+  if (chartBtn) {
+    chartBtn.setAttribute('data-source', `tbl-${tableName}`);
+    chartBtn.onclick = (e) => {
+      e.stopPropagation();
+      openCustomChartBuilder(`tbl-${tableName}`);
+    };
+  }
+}
+
 function renderCatalogTable() {
   const tbody = document.getElementById('tbody-catalog');
   if (!tbody) return;
 
   const query = (document.getElementById('filter-catalog-search')?.value || '').toLowerCase();
-  const tables = CP_DATA.table_catalog.filter(t => {
-    return !query || t.name.toLowerCase().includes(query) || t.category.toLowerCase().includes(query);
-  });
+  const tables = (CP_DATA && CP_DATA.table_catalog) ? CP_DATA.table_catalog.filter(t => {
+    return !query || t.name.toLowerCase().includes(query) || (t.category && t.category.toLowerCase().includes(query));
+  }) : [];
   const viewBtnText = window.i18n ? window.i18n.t('db.btn_view_records', '🔍 Ver Registros') : '🔍 Ver Registros';
+  const chartBtnText = window.i18n ? window.i18n.t('db.btn_chart_table', 'Graficar') : 'Graficar';
 
   tbody.innerHTML = tables.map(t => {
+    const isSelected = selectedCatalogTable === t.name;
     const colNames = t.columns.map(c => c.name).slice(0, 4).join(', ') + (t.columns.length > 4 ? '...' : '');
     return `
-      <tr>
+      <tr class="${isSelected ? 'selected-row' : ''}" data-table-name="${t.name}" onclick="selectCatalogTable('${t.name}')" style="cursor:pointer;">
         <td class="cell-mono"><strong>${t.name}</strong></td>
         <td><span class="pill-badge vlan">${t.category}</span></td>
         <td class="cell-mono"><strong>${fmtNum(t.row_count)}</strong></td>
         <td class="cell-mono">${t.columns.length}</td>
         <td style="color:var(--text-muted); font-size:11px; max-width:280px; overflow:hidden; text-overflow:ellipsis;">${colNames}</td>
         <td>
-          <button class="btn btn-primary" style="padding:4px 10px; font-size:11px;" onclick="openTableViewer('${t.name}')">
-            ${viewBtnText}
-          </button>
+          <div style="display:flex; gap:6px;">
+            <button class="btn btn-primary" style="padding:4px 10px; font-size:11px;" onclick="event.stopPropagation(); selectCatalogTable('${t.name}'); openTableViewer('${t.name}')">
+              ${viewBtnText}
+            </button>
+            <button class="btn btn-outline" style="padding:4px 10px; font-size:11px;" onclick="event.stopPropagation(); selectCatalogTable('${t.name}'); openCustomChartBuilder('tbl-${t.name}')" title="Graficar ${t.name}">
+              <span>📊</span> <span data-i18n="db.btn_chart_table">${chartBtnText}</span>
+            </button>
+          </div>
         </td>
       </tr>
     `;
@@ -6432,7 +6559,7 @@ function renderCatalogTable() {
 
 // Table live record viewer (Modal)
 async function openTableViewer(tableName, page = 1) {
-  modalState.tableName = tableName;
+  selectCatalogTable(tableName);
   modalState.page = page;
 
   const modal = document.getElementById('modal-table-viewer');
@@ -6613,25 +6740,39 @@ async function loadTableDataSource(sourceId) {
     defaultType = 'bar';
     defaultTimeFormat = isLikelyDateColumn(defaultX, rows) ? 'date' : 'none';
   } else if (sourceId === 'modal-table') {
-    title = `Tabla SQLite: ${modalState.tableName || 'Registros'}`;
-    if (modalState.tableName) {
-      try {
-        const res = await fetch(`/api/table/${encodeURIComponent(modalState.tableName)}?all=1`);
-        if (res.ok) {
-          const data = await res.json();
-          rows = data.rows || [];
-          columns = data.columns || [];
-        } else {
-          rows = modalState.currentRows || [];
-          columns = modalState.columns || [];
-        }
-      } catch (e) {
-        rows = modalState.currentRows || [];
-        columns = modalState.columns || [];
+    const targetTable = modalState.tableName || selectedCatalogTable || (CP_DATA?.table_catalog?.[0]?.name);
+    if (targetTable) {
+      return await loadTableDataSource(`tbl-${targetTable}`);
+    }
+    title = `Tabla SQLite: Registros`;
+    rows = modalState.currentRows || [];
+    columns = modalState.columns || (rows[0] ? Object.keys(rows[0]) : []);
+    defaultX = columns[0] || '';
+    defaultY = columns[1] || '*';
+    defaultOp = columns[1] ? 'SUM' : 'COUNT';
+    defaultType = 'bar';
+    defaultTimeFormat = isLikelyDateColumn(defaultX, rows) ? 'date' : 'none';
+  } else if (sourceId.startsWith('tbl-') || (CP_DATA && CP_DATA.table_catalog && CP_DATA.table_catalog.some(t => t.name === sourceId))) {
+    const tableName = sourceId.startsWith('tbl-') ? sourceId.substring(4) : sourceId;
+    title = `Tabla SQLite: ${tableName}`;
+    try {
+      const res = await fetch(`/api/table/${encodeURIComponent(tableName)}?all=1`);
+      if (res.ok) {
+        const data = await res.json();
+        rows = data.rows || [];
+        columns = data.columns || [];
       }
-    } else {
-      rows = modalState.currentRows || [];
-      columns = modalState.columns || (rows[0] ? Object.keys(rows[0]) : []);
+    } catch (e) {}
+    if (rows.length === 0 && modalState.tableName === tableName && modalState.currentRows && modalState.currentRows.length > 0) {
+      rows = modalState.currentRows;
+      columns = modalState.columns && modalState.columns.length > 0 ? modalState.columns : Object.keys(rows[0] || {});
+    }
+    if (rows.length === 0) {
+      const tMeta = CP_DATA.table_catalog?.find(t => t.name === tableName);
+      if (tMeta && tMeta.sample) {
+        rows = [tMeta.sample];
+        columns = tMeta.columns ? tMeta.columns.map(c => c.name) : Object.keys(tMeta.sample);
+      }
     }
     defaultX = columns[0] || '';
     defaultY = columns[1] || '*';
@@ -6727,6 +6868,213 @@ function parseNumericValue(val) {
   return 0;
 }
 
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function splitSqlByOperator(str, targetOp) {
+  const result = [];
+  let current = '';
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let parenDepth = 0;
+  const opLen = targetOp.length;
+
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (ch === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      current += ch;
+    } else if (ch === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      current += ch;
+    } else if (ch === '(' && !inSingleQuote && !inDoubleQuote) {
+      parenDepth++;
+      current += ch;
+    } else if (ch === ')' && !inSingleQuote && !inDoubleQuote) {
+      if (parenDepth > 0) parenDepth--;
+      current += ch;
+    } else if (!inSingleQuote && !inDoubleQuote && parenDepth === 0) {
+      const sub = str.substring(i, i + opLen);
+      if (sub.toUpperCase() === targetOp.toUpperCase()) {
+        const prevChar = i > 0 ? str[i - 1] : ' ';
+        const nextChar = (i + opLen) < str.length ? str[i + opLen] : ' ';
+        if (/\s/.test(prevChar) && /\s/.test(nextChar)) {
+          result.push(current.trim());
+          current = '';
+          i += opLen - 1;
+          continue;
+        }
+      }
+      current += ch;
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) {
+    result.push(current.trim());
+  }
+  return result.length > 0 ? result : [str];
+}
+
+function getRowFieldValue(row, fieldName) {
+  if (!row || !fieldName) return undefined;
+  if (fieldName in row) return row[fieldName];
+  const lower = fieldName.toLowerCase();
+  for (const k in row) {
+    if (k.toLowerCase() === lower) return row[k];
+  }
+  return undefined;
+}
+
+function evaluateSingleSqlPredicate(row, pred) {
+  let p = pred.trim();
+  if (!p) return true;
+
+  while (p.startsWith('(') && p.endsWith(')')) {
+    let depth = 0;
+    let balanced = true;
+    for (let i = 0; i < p.length - 1; i++) {
+      if (p[i] === '(') depth++;
+      else if (p[i] === ')') {
+        depth--;
+        if (depth === 0) { balanced = false; break; }
+      }
+    }
+    if (balanced && depth === 1) {
+      p = p.substring(1, p.length - 1).trim();
+    } else {
+      break;
+    }
+  }
+
+  // 1. IS NOT NULL
+  let m = p.match(/^([a-zA-Z0-9_\.\-]+)\s+IS\s+NOT\s+NULL$/i);
+  if (m) {
+    const val = getRowFieldValue(row, m[1]);
+    return val !== null && val !== undefined && val !== '';
+  }
+
+  // 2. IS NULL
+  m = p.match(/^([a-zA-Z0-9_\.\-]+)\s+IS\s+NULL$/i);
+  if (m) {
+    const val = getRowFieldValue(row, m[1]);
+    return val === null || val === undefined || val === '';
+  }
+
+  // 3. IN / NOT IN
+  m = p.match(/^([a-zA-Z0-9_\.\-]+)\s+(NOT\s+IN|IN)\s*\((.+)\)$/i);
+  if (m) {
+    const field = m[1];
+    const isNotIn = m[2].toUpperCase().includes('NOT');
+    const itemsRaw = m[3];
+    const items = itemsRaw.split(',').map(s => {
+      let trimmed = s.trim();
+      if ((trimmed.startsWith("'") && trimmed.endsWith("'")) || (trimmed.startsWith('"') && trimmed.endsWith('"'))) {
+        trimmed = trimmed.substring(1, trimmed.length - 1);
+      }
+      return trimmed;
+    });
+
+    const rowVal = getRowFieldValue(row, field);
+    const rowValStr = String(rowVal ?? '').toLowerCase();
+    const rowValNum = typeof rowVal === 'number' ? rowVal : parseFloat(rowVal);
+
+    const matchFound = items.some(item => {
+      if (item.toLowerCase() === rowValStr) return true;
+      const itemNum = parseFloat(item);
+      if (!isNaN(itemNum) && !isNaN(rowValNum) && itemNum === rowValNum) return true;
+      return false;
+    });
+
+    return isNotIn ? !matchFound : matchFound;
+  }
+
+  // 4. LIKE / NOT LIKE
+  m = p.match(/^([a-zA-Z0-9_\.\-]+)\s+(NOT\s+LIKE|LIKE)\s+['"]?(.*?)['"]?$/i);
+  if (m) {
+    const field = m[1];
+    const isNotLike = m[2].toUpperCase().includes('NOT');
+    const pattern = m[3];
+    const rowVal = String(getRowFieldValue(row, field) ?? '');
+
+    const escaped = pattern.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')
+                           .replace(/%/g, '.*')
+                           .replace(/_/g, '.');
+    const regex = new RegExp(`^${escaped}$`, 'i');
+    const matched = regex.test(rowVal);
+    return isNotLike ? !matched : matched;
+  }
+
+  // 5. Binary comparisons: <=, >=, !=, <>, ==, =, <, >
+  const opMatch = p.match(/^([a-zA-Z0-9_\.\-]+)\s*(<=|>=|!=|<>|==|=|<|>)\s*(.+)$/);
+  if (opMatch) {
+    const field = opMatch[1];
+    const op = opMatch[2];
+    let rawVal = opMatch[3].trim();
+
+    if ((rawVal.startsWith("'") && rawVal.endsWith("'")) || (rawVal.startsWith('"') && rawVal.endsWith('"'))) {
+      rawVal = rawVal.substring(1, rawVal.length - 1);
+    }
+
+    const rowVal = getRowFieldValue(row, field);
+
+    const numTarget = parseFloat(rawVal);
+    const numRow = typeof rowVal === 'number' ? rowVal : parseFloat(String(rowVal ?? '').replace(/,/g, ''));
+    const areNumbers = !isNaN(numTarget) && !isNaN(numRow) && !/^\d{4}-\d{2}-\d{2}/.test(rawVal);
+
+    if (areNumbers) {
+      switch (op) {
+        case '=':
+        case '==': return numRow === numTarget;
+        case '!=':
+        case '<>': return numRow !== numTarget;
+        case '<': return numRow < numTarget;
+        case '<=': return numRow <= numTarget;
+        case '>': return numRow > numTarget;
+        case '>=': return numRow >= numTarget;
+      }
+    } else {
+      const strRow = String(rowVal ?? '').toLowerCase();
+      const strTarget = rawVal.toLowerCase();
+
+      switch (op) {
+        case '=':
+        case '==': return strRow === strTarget;
+        case '!=':
+        case '<>': return strRow !== strTarget;
+        case '<': return strRow < strTarget;
+        case '<=': return strRow <= strTarget;
+        case '>': return strRow > strTarget;
+        case '>=': return strRow >= strTarget;
+      }
+    }
+  }
+
+  return true;
+}
+
+function evaluateRowSqlCondition(row, sqlStr) {
+  if (!sqlStr || !sqlStr.trim()) return true;
+  let str = sqlStr.trim();
+  if (/^where\s+/i.test(str)) {
+    str = str.replace(/^where\s+/i, '').trim();
+  }
+  if (!str) return true;
+
+  const orClauses = splitSqlByOperator(str, 'OR');
+  return orClauses.some(orClause => {
+    const andClauses = splitSqlByOperator(orClause, 'AND');
+    return andClauses.every(andClause => evaluateSingleSqlPredicate(row, andClause));
+  });
+}
+
 function getActiveRows() {
   let rows = chartGenState.allRows || [];
   if (rows.length === 0) return [];
@@ -6768,18 +7116,8 @@ function getActiveRows() {
   return rows;
 }
 
-function calculateChartData() {
-  const activeRows = getActiveRows();
-  chartGenState.rows = activeRows;
-
-  const subEl = document.getElementById('chartgen-source-sub');
-  if (subEl) {
-    const totalAll = chartGenState.allRows ? chartGenState.allRows.length : 0;
-    subEl.textContent = `Visualizando ${fmtNum(activeRows.length)} de ${fmtNum(totalAll)} registros de la tabla`;
-  }
-
-  const { xCol, yCol, op, timeFormat, sort, limit } = chartGenState;
-  if (!activeRows || activeRows.length === 0 || !xCol) {
+function aggregateRowsData(rows, xCol, yCol, op, effectiveTimeFormat, sort, limit) {
+  if (!rows || rows.length === 0 || !xCol) {
     return { items: [], totalCount: 0, sum: 0, avg: 0, max: 0, min: 0 };
   }
 
@@ -6788,18 +7126,18 @@ function calculateChartData() {
   const isSumMinute = op === 'SUM_MINUTE';
   const isSumTime = isSumDay || isSumHour || isSumMinute;
 
-  let effectiveTimeFormat = timeFormat;
-  if (isSumDay) effectiveTimeFormat = 'date';
-  else if (isSumHour) effectiveTimeFormat = 'hour_datetime';
-  else if (isSumMinute) effectiveTimeFormat = 'minute';
+  let effTime = effectiveTimeFormat;
+  if (isSumDay) effTime = 'date';
+  else if (isSumHour) effTime = 'hour_datetime';
+  else if (isSumMinute) effTime = 'minute';
 
-  const isTime = isSumTime || (effectiveTimeFormat && effectiveTimeFormat !== 'none');
+  const isTime = isSumTime || (effTime && effTime !== 'none');
   const WEEKDAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
   let processedRows = [];
 
-  for (let i = 0; i < activeRows.length; i++) {
-    const row = activeRows[i];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
     const rawX = row[xCol];
     let label = '';
     let sortKey = null;
@@ -6816,28 +7154,28 @@ function calculateChartData() {
       }
 
       if (dateObj) {
-        if (effectiveTimeFormat === 'date') {
+        if (effTime === 'date') {
           const d = String(dateObj.getDate()).padStart(2, '0');
           const m = String(dateObj.getMonth() + 1).padStart(2, '0');
           const y = dateObj.getFullYear();
           label = `${d}/${m}/${y}`;
           sortKey = dateObj.getFullYear() * 10000 + (dateObj.getMonth() + 1) * 100 + dateObj.getDate();
-        } else if (effectiveTimeFormat === 'hour') {
+        } else if (effTime === 'hour') {
           const h = dateObj.getHours();
           label = `${String(h).padStart(2, '0')}:00`;
           sortKey = h;
-        } else if (effectiveTimeFormat === 'weekday') {
+        } else if (effTime === 'weekday') {
           const w = dateObj.getDay();
           label = WEEKDAYS[w];
           sortKey = (w + 6) % 7;
-        } else if (effectiveTimeFormat === 'hour_datetime') {
+        } else if (effTime === 'hour_datetime') {
           const d = String(dateObj.getDate()).padStart(2, '0');
           const m = String(dateObj.getMonth() + 1).padStart(2, '0');
           const h = String(dateObj.getHours()).padStart(2, '0');
           label = `${d}/${m} ${h}:00`;
           const roundedHour = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), dateObj.getHours(), 0, 0);
           sortKey = roundedHour.getTime();
-        } else if (effectiveTimeFormat === 'minute' || effectiveTimeFormat === 'datetime') {
+        } else if (effTime === 'minute' || effTime === 'datetime') {
           const d = String(dateObj.getDate()).padStart(2, '0');
           const m = String(dateObj.getMonth() + 1).padStart(2, '0');
           const h = String(dateObj.getHours()).padStart(2, '0');
@@ -6965,13 +7303,82 @@ function calculateChartData() {
   };
 }
 
+function calculateChartData() {
+  const activeRows = getActiveRows();
+  chartGenState.rows = activeRows;
+
+  const subEl = document.getElementById('chartgen-source-sub');
+  if (subEl) {
+    const totalAll = chartGenState.allRows ? chartGenState.allRows.length : 0;
+    subEl.textContent = `Visualizando ${fmtNum(activeRows.length)} de ${fmtNum(totalAll)} registros de la tabla`;
+  }
+
+  const { xCol, yCol, op, timeFormat, sort, limit, diffCol } = chartGenState;
+
+  // Single Chart Calculation
+  const overall = aggregateRowsData(activeRows, xCol, yCol, op, timeFormat, sort, limit);
+
+  // Differentiator Groups (Small Multiples Split)
+  let diffGroups = [];
+  if (diffCol && diffCol.trim() !== '') {
+    const groupsMap = new Map();
+    for (const r of activeRows) {
+      let gVal = r[diffCol];
+      if (gVal === null || gVal === undefined || gVal === '') gVal = '(Vacío)';
+      else gVal = String(gVal);
+
+      if (!groupsMap.has(gVal)) {
+        groupsMap.set(gVal, []);
+      }
+      groupsMap.get(gVal).push(r);
+    }
+
+    const sortedKeys = Array.from(groupsMap.keys()).sort((a, b) => {
+      const numA = parseFloat(a);
+      const numB = parseFloat(b);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return a.localeCompare(b, undefined, { numeric: true });
+    });
+
+    // Cap at 36 distinct charts to prevent performance degradation
+    const cappedKeys = sortedKeys.slice(0, 36);
+    diffGroups = cappedKeys.map(key => {
+      const gRows = groupsMap.get(key);
+      const gResult = aggregateRowsData(gRows, xCol, yCol, op, timeFormat, sort, limit);
+      return {
+        groupKey: key,
+        rowCount: gRows.length,
+        result: gResult
+      };
+    });
+  }
+
+  return {
+    ...overall,
+    filteredRowsCount: activeRows.length,
+    isDifferentiated: Boolean(diffCol && diffCol.trim() !== ''),
+    diffCol: diffCol || '',
+    diffGroups
+  };
+}
+
 function renderCustomChart() {
+  const singleWrap = document.getElementById('chartgen-single-chart-wrap');
+  const diffWrap = document.getElementById('chartgen-diff-charts-container');
   const canvas = document.getElementById('canvas-custom-chart');
   const emptyState = document.getElementById('chartgen-no-data');
   if (!canvas) return;
 
   const result = calculateChartData();
   chartGenState.processedData = result;
+
+  // Clean up any existing differentiator chart instances
+  if (chartGenState.diffChartInstances && chartGenState.diffChartInstances.length > 0) {
+    chartGenState.diffChartInstances.forEach(inst => {
+      try { inst.destroy(); } catch (e) {}
+    });
+    chartGenState.diffChartInstances = [];
+  }
 
   // Update stats cards
   const countEl = document.getElementById('chartgen-stat-count');
@@ -6988,6 +7395,135 @@ function renderCustomChart() {
 
   // Update collapsed summary badges
   updateChartgenCollapsedBadges();
+
+  const { type, color, yCol, op } = chartGenState;
+  const isHoriz = type === 'horizontalBar';
+  const isLine = type === 'line' || type === 'area';
+  const isPie = type === 'pie' || type === 'doughnut';
+  const isArea = type === 'area';
+
+  const chartType = isHoriz ? 'bar' : (isPie ? type : (isLine ? 'line' : 'bar'));
+
+  const VIVID_COLORS = [
+    '#06b6d4', '#f43f5e', '#10b981', '#8b5cf6', '#f59e0b',
+    '#3b82f6', '#ec4899', '#14b8a6', '#6366f1', '#eab308',
+    '#a855f7', '#22c55e', '#f97316', '#0ea5e9', '#d946ef'
+  ];
+
+  // 1. DIFFERENTIATOR MULTI-CHART MODE
+  if (result.isDifferentiated && result.diffGroups && result.diffGroups.length > 0) {
+    if (singleWrap) singleWrap.style.display = 'none';
+    if (diffWrap) diffWrap.style.display = 'block';
+
+    const diffBadge = document.getElementById('chartgen-diff-summary-badge');
+    const diffCountBadge = document.getElementById('chartgen-diff-count-badge');
+    if (diffBadge) diffBadge.textContent = `🏷️ Desglose por: ${chartGenState.diffCol}`;
+    if (diffCountBadge) diffCountBadge.textContent = `${result.diffGroups.length} gráficos generados`;
+
+    const diffGrid = document.getElementById('chartgen-diff-grid');
+    if (diffGrid) {
+      diffGrid.innerHTML = '';
+      result.diffGroups.forEach((group, idx) => {
+        const groupColor = color === 'multi' ? VIVID_COLORS[idx % VIVID_COLORS.length] : color;
+        const card = document.createElement('div');
+        card.className = 'chartgen-diff-card';
+        card.innerHTML = `
+          <div class="chartgen-diff-card-header">
+            <div class="chartgen-diff-card-title" title="${chartGenState.diffCol}: ${escapeHtml(group.groupKey)}">
+              <span>📌</span> <strong>${escapeHtml(group.groupKey)}</strong>
+            </div>
+            <div class="diff-stats-mini">
+              <span>Filas: <strong>${fmtNum(group.rowCount)}</strong></span>
+              <span>${op === 'COUNT' ? 'Total' : op}: <strong>${fmtNum(op === 'COUNT' ? group.result.totalCount : group.result.sum)}</strong></span>
+            </div>
+          </div>
+          <div class="chartgen-diff-canvas-wrap">
+            <canvas id="canvas-diff-${idx}"></canvas>
+          </div>
+        `;
+        diffGrid.appendChild(card);
+
+        const diffCanvas = card.querySelector(`#canvas-diff-${idx}`);
+        if (!diffCanvas) return;
+        const diffCtx = diffCanvas.getContext('2d');
+        const gLabels = group.result.items.map(it => it.label);
+        const gValues = group.result.items.map(it => it.value);
+
+        let gBgColors, gBorderColors;
+        if (color === 'multi' || isPie) {
+          gBgColors = gLabels.map((_, i) => hexToRgba(VIVID_COLORS[i % VIVID_COLORS.length], 0.85));
+          gBorderColors = gLabels.map((_, i) => VIVID_COLORS[i % VIVID_COLORS.length]);
+        } else {
+          gBgColors = hexToRgba(groupColor, isArea ? 0.25 : 0.85);
+          gBorderColors = groupColor;
+        }
+
+        const metricTitle = op === 'COUNT' ? 'Conteo de Filas' : `${op} (${yCol})`;
+
+        const cfg = {
+          type: chartType,
+          data: {
+            labels: gLabels,
+            datasets: [{
+              label: `${metricTitle} - ${group.groupKey}`,
+              data: gValues,
+              backgroundColor: gBgColors,
+              borderColor: gBorderColors,
+              borderWidth: isLine ? 2 : 1,
+              fill: isArea,
+              tension: isLine ? 0.35 : 0,
+              borderRadius: (chartType === 'bar' && !isPie) ? 3 : 0,
+              pointBackgroundColor: gBorderColors,
+              pointRadius: isLine ? 2 : 0
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: isHoriz ? 'y' : 'x',
+            animation: { duration: 250 },
+            plugins: {
+              legend: { display: isPie, position: 'right', labels: { boxWidth: 10, color: '#94a3b8', font: { size: 10 } } },
+              tooltip: {
+                callbacks: {
+                  label: function(ctx) {
+                    const it = group.result.items[ctx.dataIndex];
+                    const valStr = fmtNum(ctx.raw);
+                    if (it && it.count && it.count > 1 && op !== 'COUNT') {
+                      return ` ${metricTitle}: ${valStr} (${it.count} filas)`;
+                    }
+                    return ` ${metricTitle}: ${valStr}`;
+                  }
+                }
+              }
+            }
+          }
+        };
+
+        if (!isPie) {
+          if (isHoriz) {
+            cfg.options.scales = {
+              x: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
+              y: { grid: { display: false }, ticks: { color: '#cbd5e1', font: { size: 10 } } }
+            };
+          } else {
+            cfg.options.scales = {
+              x: { grid: { color: 'rgba(255, 255, 255, 0.04)' }, ticks: { color: '#94a3b8', font: { size: 10 }, maxRotation: 45, minRotation: gLabels.length > 6 ? 30 : 0 } },
+              y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 } } }
+            };
+          }
+        }
+
+        const chartInst = new Chart(diffCtx, cfg);
+        chartGenState.diffChartInstances.push(chartInst);
+      });
+    }
+    return;
+  }
+
+  // 2. SINGLE CHART MODE
+  if (singleWrap) singleWrap.style.display = 'block';
+  if (diffWrap) diffWrap.style.display = 'none';
 
   if (!result.items || result.items.length === 0) {
     if (chartGenState.chartInstance) {
@@ -7008,22 +7544,8 @@ function renderCustomChart() {
   }
 
   const ctx = canvas.getContext('2d');
-  const { type, color, yCol, op } = chartGenState;
   const labels = result.items.map(it => it.label);
   const values = result.items.map(it => it.value);
-
-  const isHoriz = type === 'horizontalBar';
-  const isLine = type === 'line' || type === 'area';
-  const isPie = type === 'pie' || type === 'doughnut';
-  const isArea = type === 'area';
-
-  const chartType = isHoriz ? 'bar' : (isPie ? type : (isLine ? 'line' : 'bar'));
-
-  const VIVID_COLORS = [
-    '#06b6d4', '#f43f5e', '#10b981', '#8b5cf6', '#f59e0b',
-    '#3b82f6', '#ec4899', '#14b8a6', '#6366f1', '#eab308',
-    '#a855f7', '#22c55e', '#f97316', '#0ea5e9', '#d946ef'
-  ];
 
   let bgColors, borderColors;
   if (color === 'multi' || isPie) {
@@ -7116,7 +7638,280 @@ function renderCustomChart() {
   chartGenState.chartInstance = new Chart(ctx, config);
 }
 
+function updateChartgenColumnSelects() {
+  const xSelect = document.getElementById('chartgen-x-col');
+  const ySelect = document.getElementById('chartgen-y-col');
+  const diffSelect = document.getElementById('chartgen-diff-col');
+  const cols = chartGenState.columns || [];
+
+  if (xSelect) {
+    xSelect.innerHTML = cols.map(c => `
+      <option value="${c}" ${c === chartGenState.xCol ? 'selected' : ''}>${c}</option>
+    `).join('');
+  }
+
+  if (ySelect) {
+    const yOpts = [
+      `<option value="*" ${chartGenState.yCol === '*' ? 'selected' : ''}>* (Conteo / Frecuencia de Filas)</option>`
+    ];
+    cols.forEach(c => {
+      yOpts.push(`<option value="${c}" ${c === chartGenState.yCol ? 'selected' : ''}>${c}</option>`);
+    });
+    ySelect.innerHTML = yOpts.join('');
+  }
+
+  if (diffSelect) {
+    const diffOpts = [
+      `<option value="" ${!chartGenState.diffCol ? 'selected' : ''}>(Ninguno - Gráfico único)</option>`
+    ];
+    cols.forEach(c => {
+      diffOpts.push(`<option value="${c}" ${c === chartGenState.diffCol ? 'selected' : ''}>${c}</option>`);
+    });
+    diffSelect.innerHTML = diffOpts.join('');
+  }
+}
+
+function openTableFieldsModal() {
+  const modal = document.getElementById('modal-table-fields');
+  const tbody = document.getElementById('tbody-table-fields');
+  const titleEl = document.getElementById('table-fields-title');
+  const countBadge = document.getElementById('table-fields-count-badge');
+  const searchInput = document.getElementById('filter-table-fields-search');
+  if (!modal || !tbody) return;
+
+  if (titleEl) {
+    titleEl.textContent = `Campos: ${chartGenState.title || 'Tabla de Datos'}`;
+  }
+
+  const cols = chartGenState.columns || [];
+  const rows = chartGenState.rawRows || chartGenState.allRows || [];
+
+  if (countBadge) {
+    countBadge.textContent = `${cols.length} campos`;
+  }
+  if (searchInput) searchInput.value = '';
+
+  tbody.innerHTML = cols.map(col => {
+    let sampleVal = null;
+    let isDate = isLikelyDateColumn(col, rows);
+    let isNum = false;
+    let numChecks = 0;
+
+    for (let i = 0; i < Math.min(rows.length, 50); i++) {
+      const v = rows[i][col];
+      if (v !== undefined && v !== null && v !== '') {
+        if (sampleVal === null) sampleVal = v;
+        if (typeof v === 'number' || (!isNaN(Number(v)) && String(v).trim() !== '')) {
+          numChecks++;
+        }
+      }
+    }
+
+    if (numChecks >= 3 || (rows.length > 0 && numChecks === Math.min(rows.length, 50))) {
+      isNum = true;
+    }
+
+    let typeBadge = '';
+    let icon = '🔤';
+    if (isDate) {
+      typeBadge = '<span class="field-type-badge field-type-date">TIMESTAMP / DATE</span>';
+      icon = '⏱️';
+    } else if (isNum) {
+      typeBadge = '<span class="field-type-badge field-type-num">NUMERIC / REAL</span>';
+      icon = '🔢';
+    } else {
+      typeBadge = '<span class="field-type-badge field-type-str">TEXT / STRING</span>';
+      icon = '🔤';
+    }
+
+    const sampleDisplay = sampleVal !== null ? escapeHtml(String(sampleVal)) : '<span style="color:var(--text-muted);">(NULL)</span>';
+
+    return `
+      <tr data-col="${escapeHtml(col)}">
+        <td style="font-weight:600; color:var(--text-primary);">
+          <span style="margin-right:6px;">${icon}</span>${escapeHtml(col)}
+        </td>
+        <td>${typeBadge}</td>
+        <td style="font-family:var(--font-mono); font-size:12px; color:var(--text-secondary); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(String(sampleVal || ''))}">
+          ${sampleDisplay}
+        </td>
+        <td style="text-align:right;">
+          <div class="field-action-group">
+            <button class="btn-assign-mini btn-assign-x" data-col="${escapeHtml(col)}" title="Asignar como Eje X">Eje X</button>
+            <button class="btn-assign-mini btn-assign-y" data-col="${escapeHtml(col)}" title="Asignar como Eje Y">Eje Y</button>
+            <button class="btn-assign-mini btn-assign-diff" data-col="${escapeHtml(col)}" title="Asignar como Campo Diferenciador">Diferenciador</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  // Wire action buttons
+  tbody.querySelectorAll('.btn-assign-x').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const col = btn.getAttribute('data-col');
+      chartGenState.xCol = col;
+      const xSelect = document.getElementById('chartgen-x-col');
+      if (xSelect) xSelect.value = col;
+      const isDate = isLikelyDateColumn(col, chartGenState.allRows);
+      const timeSelect = document.getElementById('chartgen-time-format');
+      if (isDate) {
+        chartGenState.timeFormat = 'date';
+        if (timeSelect) timeSelect.value = 'date';
+      }
+      modal.classList.remove('active');
+      renderCustomChart();
+    });
+  });
+
+  tbody.querySelectorAll('.btn-assign-y').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const col = btn.getAttribute('data-col');
+      chartGenState.yCol = col;
+      const ySelect = document.getElementById('chartgen-y-col');
+      if (ySelect) ySelect.value = col;
+      if (chartGenState.op === 'COUNT') {
+        chartGenState.op = 'SUM';
+        const opSelect = document.getElementById('chartgen-op');
+        if (opSelect) opSelect.value = 'SUM';
+      }
+      modal.classList.remove('active');
+      renderCustomChart();
+    });
+  });
+
+  tbody.querySelectorAll('.btn-assign-diff').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const col = btn.getAttribute('data-col');
+      chartGenState.diffCol = col;
+      const diffSelect = document.getElementById('chartgen-diff-col');
+      if (diffSelect) diffSelect.value = col;
+      modal.classList.remove('active');
+      renderCustomChart();
+    });
+  });
+
+  modal.classList.add('active');
+}
+
+async function executeChartgenSqlFilter() {
+  const inputEl = document.getElementById('chartgen-sql-filter-input');
+  const statusEl = document.getElementById('chartgen-sql-status');
+  if (!inputEl) return;
+
+  const rawQuery = inputEl.value.trim();
+  chartGenState.sqlFilter = rawQuery;
+
+  if (!rawQuery) {
+    chartGenState.allRows = [...chartGenState.rawRows];
+    if (statusEl) {
+      statusEl.textContent = `Filtro limpio. ${fmtNum(chartGenState.allRows.length)} filas.`;
+      statusEl.className = 'chartgen-sql-status status-info';
+    }
+    renderCustomChart();
+    return;
+  }
+
+  const isSelect = /^select\b/i.test(rawQuery);
+  const isTableSource = chartGenState.sourceId && (chartGenState.sourceId.startsWith('tbl-') || chartGenState.sourceId === 'modal-table');
+  const currentTable = isTableSource ? (chartGenState.sourceId.startsWith('tbl-') ? chartGenState.sourceId.substring(4) : (modalState.tableName || selectedCatalogTable)) : null;
+
+  if (isSelect || (isTableSource && currentTable)) {
+    try {
+      if (statusEl) {
+        statusEl.textContent = 'Consultando SQLite...';
+        statusEl.className = 'chartgen-sql-status status-info';
+      }
+      const sqlToRun = isSelect ? rawQuery : (/^where\b/i.test(rawQuery) ? `SELECT * FROM "${currentTable}" ${rawQuery}` : `SELECT * FROM "${currentTable}" WHERE ${rawQuery}`);
+      const res = await fetch(`/api/sql?q=${encodeURIComponent(sqlToRun)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.rows) {
+          const cols = data.columns || [];
+          const rowObjs = data.rows.map(r => {
+            if (Array.isArray(r)) {
+              const o = {};
+              cols.forEach((c, idx) => { o[c] = r[idx]; });
+              return o;
+            }
+            return r;
+          });
+          chartGenState.allRows = rowObjs;
+          if (isSelect) {
+            chartGenState.rawRows = [...rowObjs];
+          }
+          if (cols.length > 0) {
+            chartGenState.columns = cols;
+            updateChartgenColumnSelects();
+          }
+          if (statusEl) {
+            statusEl.textContent = `✓ SQL OK: ${fmtNum(rowObjs.length)} filas obtenidas`;
+            statusEl.className = 'chartgen-sql-status status-success';
+          }
+          renderCustomChart();
+          return;
+        }
+      }
+    } catch (e) {
+      // Proceed to client-side evaluation fallback
+    }
+  }
+
+  try {
+    let wherePart = rawQuery;
+    if (isSelect) {
+      const match = rawQuery.match(/where\s+(.+)$/i);
+      wherePart = match ? match[1] : '';
+    } else if (/^where\s+/i.test(wherePart)) {
+      wherePart = wherePart.replace(/^where\s+/i, '');
+    }
+
+    const filtered = chartGenState.rawRows.filter(row => evaluateRowSqlCondition(row, wherePart));
+    chartGenState.allRows = filtered;
+
+    if (statusEl) {
+      if (filtered.length === 0) {
+        statusEl.textContent = '⚠️ 0 filas coinciden con el filtro';
+        statusEl.className = 'chartgen-sql-status status-warn';
+      } else {
+        statusEl.textContent = `✓ ${fmtNum(filtered.length)} de ${fmtNum(chartGenState.rawRows.length)} filas filtradas`;
+        statusEl.className = 'chartgen-sql-status status-success';
+      }
+    }
+    renderCustomChart();
+  } catch (err) {
+    if (statusEl) {
+      statusEl.textContent = `❌ Error: ${err.message || 'Sintaxis SQL no válida'}`;
+      statusEl.className = 'chartgen-sql-status status-error';
+    }
+  }
+}
+
+function clearChartgenSqlFilter() {
+  const inputEl = document.getElementById('chartgen-sql-filter-input');
+  const statusEl = document.getElementById('chartgen-sql-status');
+  if (inputEl) inputEl.value = '';
+  chartGenState.sqlFilter = '';
+  chartGenState.allRows = [...chartGenState.rawRows];
+  if (statusEl) {
+    statusEl.textContent = '';
+    statusEl.className = 'chartgen-sql-status';
+  }
+  renderCustomChart();
+}
+
 async function openCustomChartBuilder(sourceId) {
+  // If sourceId is modal-table, resolve to selected table
+  if (sourceId === 'modal-table') {
+    const targetTable = modalState.tableName || selectedCatalogTable || (CP_DATA?.table_catalog?.[0]?.name);
+    if (targetTable) {
+      sourceId = `tbl-${targetTable}`;
+    }
+  }
+
+  // Close modal table viewer so they do not overlap
+  document.getElementById('modal-table-viewer')?.classList.remove('active');
+
   // Show Modal immediately with loading state
   document.getElementById('modal-custom-chart-generator')?.classList.add('active');
   const subEl = document.getElementById('chartgen-source-sub');
@@ -7125,17 +7920,44 @@ async function openCustomChartBuilder(sourceId) {
   const meta = await loadTableDataSource(sourceId);
   chartGenState.sourceId = sourceId;
   chartGenState.allRows = meta.rows;
+  chartGenState.rawRows = [...meta.rows];
   chartGenState.columns = meta.columns;
   chartGenState.title = meta.title;
   chartGenState.recordSlice = 'all';
   chartGenState.dateFrom = null;
   chartGenState.dateTo = null;
+  chartGenState.sqlFilter = '';
+  chartGenState.diffCol = '';
 
   const titleEl = document.getElementById('chartgen-source-title');
   if (titleEl) titleEl.textContent = meta.title;
 
   const tableSelector = document.getElementById('chartgen-table-selector');
-  if (tableSelector) tableSelector.value = sourceId;
+  if (tableSelector) {
+    let optgroup = tableSelector.querySelector('optgroup[data-sqlite-group="true"]');
+    if (!optgroup && CP_DATA && CP_DATA.table_catalog && CP_DATA.table_catalog.length > 0) {
+      optgroup = document.createElement('optgroup');
+      optgroup.setAttribute('label', 'Tablas SQLite del Análisis');
+      optgroup.setAttribute('data-sqlite-group', 'true');
+      CP_DATA.table_catalog.forEach(tbl => {
+        const opt = document.createElement('option');
+        opt.value = `tbl-${tbl.name}`;
+        opt.textContent = `📁 ${tbl.name} (${fmtNum(tbl.row_count || tbl.count || 0)} filas)`;
+        optgroup.appendChild(opt);
+      });
+      tableSelector.appendChild(optgroup);
+    }
+    tableSelector.value = sourceId;
+  }
+
+  // Reset SQL filter input & status
+  const sqlInput = document.getElementById('chartgen-sql-filter-input');
+  if (sqlInput) sqlInput.value = '';
+  const sqlStatus = document.getElementById('chartgen-sql-status');
+  if (sqlStatus) {
+    sqlStatus.textContent = '';
+    sqlStatus.className = 'chartgen-sql-status';
+  }
 
   // Reset slice select to "all"
   const sliceSelect = document.getElementById('chartgen-record-slice');
@@ -7220,6 +8042,19 @@ async function openCustomChartBuilder(sourceId) {
   }
   chartGenState.yCol = meta.defaultY;
 
+  // Populate Differentiator Column select
+  const diffSelect = document.getElementById('chartgen-diff-col');
+  if (diffSelect) {
+    const diffOpts = [
+      '<option value="">(Ninguno - Gráfico único)</option>'
+    ];
+    meta.columns.forEach(c => {
+      diffOpts.push(`<option value="${c}">${c}</option>`);
+    });
+    diffSelect.innerHTML = diffOpts.join('');
+    diffSelect.value = '';
+  }
+
   // Set Op
   const opSelect = document.getElementById('chartgen-op');
   chartGenState.op = meta.defaultOp;
@@ -7290,6 +8125,7 @@ function updateChartgenCollapsedBadges() {
   if (opName === 'SUM_DAY') opName = 'SUM (Días)';
   else if (opName === 'SUM_HOUR') opName = 'SUM (Horas)';
   else if (opName === 'SUM_MINUTE') opName = 'SUM (Minutos)';
+  if (chartGenState.diffCol) opName += ` | 🏷️ ${chartGenState.diffCol}`;
   if (badgeOp) badgeOp.textContent = `Op: ${opName}`;
 
   if (badgeType) badgeType.textContent = `Tipo: ${chartGenState.type || '-'}`;
@@ -7340,6 +8176,11 @@ function toggleChartgenControls(forceState) {
     if (chartGenState.chartInstance) {
       chartGenState.chartInstance.resize();
     }
+    if (chartGenState.diffChartInstances && chartGenState.diffChartInstances.length > 0) {
+      chartGenState.diffChartInstances.forEach(inst => {
+        try { inst.resize(); } catch (e) {}
+      });
+    }
   }, 150);
 }
 
@@ -7377,10 +8218,68 @@ function toggleChartgenFullscreen(forceState) {
     if (chartGenState.chartInstance) {
       chartGenState.chartInstance.resize();
     }
+    if (chartGenState.diffChartInstances && chartGenState.diffChartInstances.length > 0) {
+      chartGenState.diffChartInstances.forEach(inst => {
+        try { inst.resize(); } catch (e) {}
+      });
+    }
   }, 150);
 }
 
 function initCustomChartBuilderListeners() {
+  // View Table Fields button
+  document.getElementById('btn-chartgen-view-fields')?.addEventListener('click', () => {
+    openTableFieldsModal();
+  });
+
+  // Fields modal close & search handlers
+  const closeFieldsModal = () => {
+    document.getElementById('modal-table-fields')?.classList.remove('active');
+  };
+  document.getElementById('btn-close-table-fields')?.addEventListener('click', closeFieldsModal);
+  document.getElementById('btn-close-table-fields-footer')?.addEventListener('click', closeFieldsModal);
+  document.getElementById('modal-table-fields')?.addEventListener('click', (e) => {
+    if (e.target.id === 'modal-table-fields') closeFieldsModal();
+  });
+
+  document.getElementById('filter-table-fields-search')?.addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    const rows = document.querySelectorAll('#tbody-table-fields tr');
+    let visible = 0;
+    rows.forEach(r => {
+      const col = (r.getAttribute('data-col') || '').toLowerCase();
+      const match = !q || col.includes(q);
+      r.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+    const countBadge = document.getElementById('table-fields-count-badge');
+    if (countBadge) countBadge.textContent = `${visible} campos`;
+  });
+
+  // SQL Filter Execute button
+  document.getElementById('btn-chartgen-sql-exec')?.addEventListener('click', () => {
+    executeChartgenSqlFilter();
+  });
+
+  // SQL Filter Input Enter key
+  document.getElementById('chartgen-sql-filter-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      executeChartgenSqlFilter();
+    }
+  });
+
+  // SQL Filter Clear button
+  document.getElementById('btn-chartgen-sql-clear')?.addEventListener('click', () => {
+    clearChartgenSqlFilter();
+  });
+
+  // Differentiator column change
+  document.getElementById('chartgen-diff-col')?.addEventListener('change', (e) => {
+    chartGenState.diffCol = e.target.value;
+    renderCustomChart();
+  });
+
   // Table selector change
   document.getElementById('chartgen-table-selector')?.addEventListener('change', (e) => {
     openCustomChartBuilder(e.target.value);
@@ -7597,6 +8496,11 @@ function initCustomChartBuilderListeners() {
 
   // ESC key handler for fullscreen & modal
   document.addEventListener('keydown', (e) => {
+    const fieldsModal = document.getElementById('modal-table-fields');
+    if (fieldsModal && fieldsModal.classList.contains('active')) {
+      closeFieldsModal();
+      return;
+    }
     const modal = document.getElementById('modal-custom-chart-generator');
     if (!modal || !modal.classList.contains('active')) return;
     if (e.key === 'Escape') {
@@ -7869,7 +8773,17 @@ function setupEventListeners() {
     else if (activePage === 'drops') defaultSource = 'drop-reasons';
     else if (activePage === 'spikes') defaultSource = 'cpu-spikes';
     else if (activePage === 'db_explorer') {
-      defaultSource = (sqlState.rows && sqlState.rows.length > 0) ? 'sql-results' : 'modal-table';
+      if (selectedCatalogTable) {
+        defaultSource = `tbl-${selectedCatalogTable}`;
+      } else if (modalState.tableName) {
+        defaultSource = `tbl-${modalState.tableName}`;
+      } else if (CP_DATA && CP_DATA.table_catalog && CP_DATA.table_catalog.length > 0) {
+        defaultSource = `tbl-${CP_DATA.table_catalog[0].name}`;
+      } else if (sqlState.rows && sqlState.rows.length > 0) {
+        defaultSource = 'sql-results';
+      } else {
+        defaultSource = 'cpu-cores';
+      }
     }
     openCustomChartBuilder(defaultSource);
   });
